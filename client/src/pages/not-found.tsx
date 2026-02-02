@@ -3,17 +3,30 @@ import { AlertCircle } from "lucide-react";
 
 export default function NotFound() {
   return (
-    <div className="min-h-screen w-full flex items-center justify-center bg-gray-50">
-      <Card className="w-full max-w-md mx-4">
+    <div className="min-h-screen w-full flex items-center justify-center bg-background px-4">
+      <Card className="w-full max-w-lg border-card-border shadow-md">
         <CardContent className="pt-6">
-          <div className="flex mb-4 gap-2">
-            <AlertCircle className="h-8 w-8 text-red-500" />
-            <h1 className="text-2xl font-bold text-gray-900">404 Page Not Found</h1>
+          <div className="flex items-start gap-3">
+            <div className="mt-0.5 inline-flex h-10 w-10 items-center justify-center rounded-full bg-secondary text-foreground">
+              <AlertCircle className="h-5 w-5 text-muted-foreground" />
+            </div>
+            <div className="min-w-0">
+              <h1
+                className="text-2xl font-semibold tracking-tight text-foreground"
+                data-testid="text-title"
+              >
+                We’re building the Lourdes Prayer Drop lander
+              </h1>
+              <p
+                className="mt-2 text-sm leading-relaxed text-muted-foreground"
+                data-testid="text-subtitle"
+              >
+                You’re seeing this placeholder screen while we hook up the main pages.
+                The theme is active (Sky &amp; Sanctuary) — next up is the Sister Marie
+                intro and “Talk to Sister Marie” flow.
+              </p>
+            </div>
           </div>
-
-          <p className="mt-4 text-sm text-gray-600">
-            Did you forget to add the page to the router?
-          </p>
         </CardContent>
       </Card>
     </div>
