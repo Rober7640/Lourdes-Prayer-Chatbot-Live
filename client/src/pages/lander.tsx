@@ -3,6 +3,7 @@ import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import heroSky from "@/assets/images/sky-sanctuary-hero.png";
 import grottoMark from "@/assets/images/lourdes-grotto-mark.png";
+import sisterMariePortrait from "@/assets/images/sister-marie-portrait.png";
 import waterRipples from "@/assets/images/lourdes-water-ripples.png";
 import { ArrowRight, Sparkles } from "lucide-react";
 
@@ -78,21 +79,17 @@ function StatusPill({ status }: { status: StatusState }) {
 function SisterMarieAvatar() {
   return (
     <div
-      className="relative mx-auto h-24 w-24 overflow-hidden rounded-2xl border border-card-border bg-gradient-to-b from-white/90 to-white/60 shadow-md"
+      className="relative mx-auto h-24 w-24 overflow-hidden rounded-2xl border border-card-border bg-white/70 shadow-md"
       data-testid="img-sister-marie"
       aria-label="Sister Marie"
     >
-      <div className="absolute inset-0 bg-[radial-gradient(circle_at_30%_20%,rgba(30,94,255,0.14),transparent_55%),radial-gradient(circle_at_70%_80%,rgba(43,140,255,0.12),transparent_55%)]" />
-      <div className="relative flex h-full w-full items-center justify-center">
-        <div className="grid h-14 w-14 place-items-center rounded-xl bg-white/70 shadow-sm">
-          <span
-            className="font-serif text-lg font-bold tracking-tight text-foreground"
-            data-testid="text-avatar-initials"
-          >
-            SM
-          </span>
-        </div>
-      </div>
+      <img
+        src={sisterMariePortrait}
+        alt="Sister Marie"
+        className="h-full w-full object-cover"
+        data-testid="img-sister-marie-photo"
+      />
+      <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_30%_15%,rgba(255,255,255,0.55),transparent_55%),linear-gradient(to_bottom,rgba(255,255,255,0.0),rgba(30,94,255,0.08))]" />
     </div>
   );
 }
