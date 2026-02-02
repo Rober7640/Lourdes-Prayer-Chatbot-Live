@@ -2,6 +2,8 @@ import { useEffect, useMemo, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import heroSky from "@/assets/images/sky-sanctuary-hero.png";
+import grottoMark from "@/assets/images/lourdes-grotto-mark.png";
+import waterRipples from "@/assets/images/lourdes-water-ripples.png";
 import { ArrowRight, Sparkles } from "lucide-react";
 
 type StatusState = "busy" | "available";
@@ -256,19 +258,30 @@ export default function LanderPage() {
           <img
             src={heroSky}
             alt=""
-            className="h-[420px] w-full object-cover"
+            className="h-[440px] w-full object-cover"
             data-testid="img-hero-sky"
           />
-          <div className="absolute inset-0 bg-gradient-to-b from-background/10 via-background/50 to-background" />
+          <div className="absolute inset-0 bg-[radial-gradient(circle_at_30%_10%,rgba(255,255,255,0.75),rgba(255,255,255,0)_55%),radial-gradient(circle_at_70%_25%,rgba(30,94,255,0.14),rgba(255,255,255,0)_55%)]" />
+          <div className="absolute inset-0 bg-gradient-to-b from-background/0 via-background/45 to-background" />
         </div>
 
-        <header className="relative mx-auto w-full max-w-2xl px-4 pt-8" data-testid="header">
-          <div className="text-center">
+        <header className="relative mx-auto w-full max-w-2xl px-4 pt-7" data-testid="header">
+          <div className="flex items-center justify-center gap-3">
             <div
-              className="text-xs font-semibold uppercase tracking-[0.22em] text-muted-foreground"
-              data-testid="text-brand"
+              className="grid h-10 w-10 place-items-center rounded-2xl border border-card-border bg-card/75 shadow-sm backdrop-blur"
+              data-testid="img-grotto-mark"
+              aria-label="Lourdes grotto"
             >
-              Messengers at Lourdes
+              <img src={grottoMark} alt="" className="h-7 w-7" />
+            </div>
+
+            <div className="text-center">
+              <div
+                className="text-[11px] font-semibold uppercase tracking-[0.24em] text-muted-foreground"
+                data-testid="text-brand"
+              >
+                Messengers at Lourdes
+              </div>
             </div>
           </div>
         </header>
@@ -312,6 +325,45 @@ export default function LanderPage() {
           </section>
 
           <HowItWorks />
+
+          <div className="mt-10" data-testid="section-water">
+            <div className="relative overflow-hidden rounded-3xl border border-card-border bg-card/65 shadow-sm backdrop-blur">
+              <img
+                src={waterRipples}
+                alt=""
+                className="pointer-events-none absolute inset-0 h-full w-full object-cover opacity-70"
+                data-testid="img-water-ripples"
+              />
+              <div className="absolute inset-0 bg-gradient-to-b from-background/0 via-background/20 to-background/50" />
+
+              <div className="relative p-6">
+                <div className="flex items-start gap-4">
+                  <div className="grid h-12 w-12 place-items-center rounded-2xl border border-card-border bg-white/70 shadow-sm">
+                    <img src={grottoMark} alt="" className="h-8 w-8" />
+                  </div>
+                  <div className="min-w-0">
+                    <div
+                      className="text-xs font-semibold uppercase tracking-[0.22em] text-muted-foreground"
+                      data-testid="text-water-kicker"
+                    >
+                      Carried to the Grotto
+                    </div>
+                    <p
+                      className="mt-2 text-[15px] leading-relaxed text-foreground"
+                      data-testid="text-water-body"
+                    >
+                      Your intention is printed, prepared, and placed in the waters at
+                      Lourdes within 7 days.
+                    </p>
+                    <div className="mt-3 text-xs text-muted-foreground" data-testid="text-water-note">
+                      A small act of presence, from afar.
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+
           <ContextBlock />
           <Testimonial />
 
