@@ -49,7 +49,7 @@ function StatusPill({ status }: { status: StatusState }) {
 
   return (
     <div
-      className="inline-flex items-center gap-2 rounded-full border border-card-border bg-white/70 px-3 py-1 shadow-xs backdrop-blur"
+      className="inline-flex items-center gap-2 rounded-full border border-card-border bg-card/70 px-3 py-1 shadow-xs backdrop-blur"
       data-testid="status-sister-marie"
     >
       <span
@@ -67,7 +67,10 @@ function StatusPill({ status }: { status: StatusState }) {
         />
       </span>
 
-      <span className="text-sm font-semibold text-foreground" data-testid="text-status">
+      <span
+        className="text-sm font-medium text-foreground"
+        data-testid="text-status"
+      >
         {isBusy ? "With a pilgrim" : "Available now"}
       </span>
     </div>
@@ -76,47 +79,42 @@ function StatusPill({ status }: { status: StatusState }) {
 
 function SisterMarieAvatar() {
   return (
-    <div className="relative mx-auto" data-testid="block-sister-marie">
-      <div
-        className="relative mx-auto h-28 w-28 overflow-hidden rounded-[22px] border border-card-border bg-white shadow-lg"
-        data-testid="img-sister-marie"
-        aria-label="Sister Marie"
-      >
-        <img
-          src={sisterMariePortrait}
-          alt="Sister Marie"
-          className="h-full w-full object-cover"
-          data-testid="img-sister-marie-photo"
-        />
-        <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_35%_15%,rgba(255,255,255,0.55),transparent_55%),linear-gradient(to_bottom,rgba(255,255,255,0.0),rgba(30,94,255,0.10))]" />
-      </div>
-      <div className="pointer-events-none absolute -left-6 -top-6 h-20 w-20 rounded-full bg-[radial-gradient(circle,rgba(30,94,255,0.18),transparent_65%)]" />
-      <div className="pointer-events-none absolute -right-8 -bottom-8 h-28 w-28 rounded-full bg-[radial-gradient(circle,rgba(43,140,255,0.14),transparent_60%)]" />
+    <div
+      className="relative mx-auto h-24 w-24 overflow-hidden rounded-2xl border border-card-border bg-white/70 shadow-md"
+      data-testid="img-sister-marie"
+      aria-label="Sister Marie"
+    >
+      <img
+        src={sisterMariePortrait}
+        alt="Sister Marie"
+        className="h-full w-full object-cover"
+        data-testid="img-sister-marie-photo"
+      />
+      <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_30%_15%,rgba(255,255,255,0.55),transparent_55%),linear-gradient(to_bottom,rgba(255,255,255,0.0),rgba(30,94,255,0.08))]" />
     </div>
   );
 }
 
 function SpeechCard() {
   return (
-    <div className="mx-auto max-w-md" data-testid="block-speech">
+    <div className="mx-auto max-w-md">
       <div
-        className="relative rounded-3xl border border-card-border bg-white/85 p-6 shadow-md backdrop-blur"
+        className="relative rounded-2xl border border-card-border bg-card/85 p-5 shadow-sm backdrop-blur"
         data-testid="card-speech"
       >
-        <div className="absolute -top-2 left-10 h-4 w-4 rotate-45 border-l border-t border-card-border bg-white/85" />
-        <div className="text-[12px] font-semibold uppercase tracking-[0.22em] text-muted-foreground" data-testid="text-quote-kicker">
-          Sister Marie
-        </div>
+        <div className="absolute -top-2 left-8 h-4 w-4 rotate-45 border-l border-t border-card-border bg-card/85" />
         <p
-          className="mt-3 font-serif text-[17px] leading-relaxed text-foreground"
+          className="text-[15px] leading-relaxed text-foreground"
           data-testid="text-intro-quote"
         >
-          “My name is Sister Marie. I’m with a small group of pilgrims who travel to the
-          Grotto…”
+          <span className="font-serif text-[15px]">
+            “My name is Sister Marie. I’m with a small group of pilgrims who travel to
+            the Grotto…”
+          </span>
+          <span className="mt-2 block text-xs text-muted-foreground" data-testid="text-voice-note">
+            Her voice, her words
+          </span>
         </p>
-        <div className="mt-3 text-xs text-muted-foreground" data-testid="text-voice-note">
-          Her voice, her words
-        </div>
       </div>
     </div>
   );
@@ -145,23 +143,15 @@ function HowItWorks() {
   );
 
   return (
-    <section className="mx-auto mt-12 w-full max-w-2xl" data-testid="section-how-it-works">
-      <div className="text-center">
-        <div
-          className="text-xs font-semibold uppercase tracking-[0.24em] text-muted-foreground"
-          data-testid="text-how-kicker"
-        >
-          Simple, physical, real
-        </div>
-        <h2
-          className="mt-2 font-serif text-2xl font-bold tracking-tight text-foreground"
-          data-testid="text-how-it-works"
-        >
-          How it works
-        </h2>
-      </div>
+    <section className="mx-auto mt-10 w-full max-w-2xl" data-testid="section-how-it-works">
+      <h2
+        className="text-center font-serif text-xl font-bold tracking-tight text-foreground"
+        data-testid="text-how-it-works"
+      >
+        How it works
+      </h2>
 
-      <div className="mt-7 grid gap-4">
+      <div className="mt-6 grid gap-4">
         {steps.map((s) => (
           <Card
             key={s.n}
@@ -170,7 +160,7 @@ function HowItWorks() {
           >
             <div className="flex items-start gap-4">
               <div
-                className="grid h-11 w-11 place-items-center rounded-2xl bg-secondary text-foreground shadow-xs"
+                className="grid h-10 w-10 place-items-center rounded-xl bg-secondary text-foreground"
                 data-testid={`badge-step-${s.n}`}
               >
                 <span className="text-sm font-semibold" data-testid={`text-step-number-${s.n}`}>
@@ -178,16 +168,10 @@ function HowItWorks() {
                 </span>
               </div>
               <div className="min-w-0">
-                <div
-                  className="text-[15px] font-semibold text-foreground"
-                  data-testid={`text-step-title-${s.n}`}
-                >
+                <div className="text-[15px] font-semibold text-foreground" data-testid={`text-step-title-${s.n}`}>
                   {s.title}
                 </div>
-                <div
-                  className="mt-1 text-sm leading-relaxed text-muted-foreground"
-                  data-testid={`text-step-body-${s.n}`}
-                >
+                <div className="mt-1 text-sm leading-relaxed text-muted-foreground" data-testid={`text-step-body-${s.n}`}>
                   {s.body}
                 </div>
               </div>
@@ -203,7 +187,7 @@ function ContextBlock() {
   return (
     <section className="mx-auto mt-10 w-full max-w-2xl" data-testid="section-context">
       <div
-        className="relative overflow-hidden rounded-3xl border border-card-border bg-card/80 p-6 shadow-sm backdrop-blur"
+        className="relative overflow-hidden rounded-2xl border border-card-border bg-card/80 p-6 shadow-sm backdrop-blur"
         data-testid="card-context"
       >
         <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_20%_0%,rgba(30,94,255,0.10),transparent_60%),radial-gradient(circle_at_90%_90%,rgba(43,140,255,0.10),transparent_55%)]" />
@@ -213,10 +197,7 @@ function ContextBlock() {
             <Sparkles className="h-4 w-4" />
             <span data-testid="text-context-kicker">Lourdes, France</span>
           </div>
-          <p
-            className="mt-3 text-[15px] leading-relaxed text-foreground"
-            data-testid="text-context-body"
-          >
+          <p className="mt-3 text-[15px] leading-relaxed text-foreground" data-testid="text-context-body">
             Since 1858, millions have traveled to Lourdes seeking healing. 70 verified
             miracles.
           </p>
@@ -233,12 +214,9 @@ function Testimonial() {
         className="border-card-border bg-card/80 p-6 shadow-sm backdrop-blur"
         data-testid="card-testimonial"
       >
-        <blockquote
-          className="font-serif text-[17px] leading-relaxed text-foreground"
-          data-testid="text-testimonial-quote"
-        >
-          “I couldn’t afford to go to Lourdes myself. Knowing my mother’s name was carried
-          there brought me peace.”
+        <blockquote className="text-[15px] leading-relaxed text-foreground" data-testid="text-testimonial-quote">
+          “I couldn’t afford to go to Lourdes myself. Knowing my mother’s name was
+          carried there brought me peace.”
         </blockquote>
         <div className="mt-4 text-sm font-medium text-muted-foreground" data-testid="text-testimonial-attrib">
           — Maria T., California
@@ -251,10 +229,7 @@ function Testimonial() {
 function Footer() {
   return (
     <footer className="mx-auto mt-12 w-full max-w-2xl pb-10" data-testid="footer">
-      <div
-        className="text-center text-xs leading-relaxed text-muted-foreground"
-        data-testid="text-footer-disclaimer"
-      >
+      <div className="text-center text-xs leading-relaxed text-muted-foreground" data-testid="text-footer-disclaimer">
         Messengers at Lourdes is independent. Not affiliated with the Sanctuary.
       </div>
       <div className="mt-3 flex items-center justify-center gap-4 text-xs text-muted-foreground">
@@ -281,11 +256,11 @@ export default function LanderPage() {
           <img
             src={heroSky}
             alt=""
-            className="h-[460px] w-full object-cover"
+            className="h-[440px] w-full object-cover"
             data-testid="img-hero-sky"
           />
-          <div className="absolute inset-0 bg-[radial-gradient(circle_at_30%_10%,rgba(255,255,255,0.82),rgba(255,255,255,0)_55%),radial-gradient(circle_at_70%_25%,rgba(30,94,255,0.18),rgba(255,255,255,0)_58%)]" />
-          <div className="absolute inset-0 bg-gradient-to-b from-background/0 via-background/35 to-background" />
+          <div className="absolute inset-0 bg-[radial-gradient(circle_at_30%_10%,rgba(255,255,255,0.75),rgba(255,255,255,0)_55%),radial-gradient(circle_at_70%_25%,rgba(30,94,255,0.14),rgba(255,255,255,0)_55%)]" />
+          <div className="absolute inset-0 bg-gradient-to-b from-background/0 via-background/45 to-background" />
         </div>
 
         <header className="relative mx-auto w-full max-w-2xl px-4 pt-7" data-testid="header">
@@ -300,7 +275,7 @@ export default function LanderPage() {
 
             <div className="text-center">
               <div
-                className="text-[11px] font-semibold uppercase tracking-[0.28em] text-muted-foreground"
+                className="text-[11px] font-semibold uppercase tracking-[0.24em] text-muted-foreground"
                 data-testid="text-brand"
               >
                 Messengers at Lourdes
@@ -321,34 +296,21 @@ export default function LanderPage() {
               <SpeechCard />
             </div>
 
-            <div className="mx-auto mt-6 max-w-md text-center" data-testid="block-cta-copy">
-              <h1
-                className="font-serif text-[22px] font-bold leading-tight tracking-tight text-foreground"
-                data-testid="text-cta-headline"
-              >
-                Share what’s on your heart.
-              </h1>
-              <p
-                className="mt-2 text-[15px] leading-relaxed text-muted-foreground"
-                data-testid="text-cta-copy"
-              >
-                Sister Marie will guide you through a short conversation and prepare your intention
-                for Lourdes.
+            <div className="mt-6 text-center" data-testid="block-cta-copy">
+              <p className="text-[15px] leading-relaxed text-foreground" data-testid="text-cta-copy">
+                I’d be honored to hear what’s on your heart.
               </p>
             </div>
 
-            <div className="mt-7 flex flex-col items-center gap-2" data-testid="block-cta">
+            <div className="mt-6 flex flex-col items-center gap-2" data-testid="block-cta">
               <Link href="/chat" data-testid="link-talk-to-sister-marie">
                 <Button
                   size="lg"
                   disabled={!ready}
                   className={[
-                    "min-h-12 w-full max-w-md rounded-2xl px-6",
-                    "shadow-lg",
-                    "bg-gradient-to-b from-[hsl(var(--primary))] to-[hsl(var(--accent))]",
-                    "border border-primary-border",
-                    "transition-all",
-                    !ready ? "opacity-60" : "hover:-translate-y-0.5 hover:shadow-xl",
+                    "min-h-11 w-full max-w-md rounded-xl px-6",
+                    "shadow-md transition-all",
+                    !ready ? "opacity-60" : "hover:-translate-y-0.5",
                   ].join(" ")}
                   data-testid="button-talk-to-sister-marie"
                 >
@@ -372,7 +334,7 @@ export default function LanderPage() {
                 className="pointer-events-none absolute inset-0 h-full w-full object-cover opacity-70"
                 data-testid="img-water-ripples"
               />
-              <div className="absolute inset-0 bg-gradient-to-b from-background/0 via-background/15 to-background/55" />
+              <div className="absolute inset-0 bg-gradient-to-b from-background/0 via-background/20 to-background/50" />
 
               <div className="relative p-6">
                 <div className="flex items-start gap-4">
@@ -390,8 +352,8 @@ export default function LanderPage() {
                       className="mt-2 text-[15px] leading-relaxed text-foreground"
                       data-testid="text-water-body"
                     >
-                      Your intention is printed, prepared, and placed in the waters at Lourdes within
-                      7 days.
+                      Your intention is printed, prepared, and placed in the waters at
+                      Lourdes within 7 days.
                     </p>
                     <div className="mt-3 text-xs text-muted-foreground" data-testid="text-water-note">
                       A small act of presence, from afar.
@@ -405,11 +367,8 @@ export default function LanderPage() {
           <ContextBlock />
           <Testimonial />
 
-          <section className="mx-auto mt-12 w-full max-w-2xl text-center" data-testid="section-final-cta">
-            <div
-              className="font-serif text-2xl font-bold tracking-tight text-foreground"
-              data-testid="text-final-cta-title"
-            >
+          <section className="mx-auto mt-10 w-full max-w-2xl text-center" data-testid="section-final-cta">
+            <div className="font-serif text-xl font-bold tracking-tight text-foreground" data-testid="text-final-cta-title">
               Your prayer deserves to be at Lourdes.
             </div>
             <div className="mt-2 text-sm text-muted-foreground" data-testid="text-final-cta-subtitle">
@@ -421,12 +380,9 @@ export default function LanderPage() {
                 size="lg"
                 disabled={!ready}
                 className={[
-                  "min-h-12 w-full max-w-md rounded-2xl px-6",
-                  "shadow-lg",
-                  "bg-gradient-to-b from-[hsl(var(--primary))] to-[hsl(var(--accent))]",
-                  "border border-primary-border",
-                  "transition-all",
-                  !ready ? "opacity-60" : "hover:-translate-y-0.5 hover:shadow-xl",
+                  "min-h-11 w-full max-w-md rounded-xl px-6",
+                  "shadow-md transition-all",
+                  !ready ? "opacity-60" : "hover:-translate-y-0.5",
                 ].join(" ")}
                 data-testid="button-talk-to-sister-marie-bottom"
               >
