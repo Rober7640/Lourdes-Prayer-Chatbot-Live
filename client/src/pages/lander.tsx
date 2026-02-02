@@ -6,6 +6,7 @@ import grottoMark from "@/assets/images/lourdes-grotto-mark.png";
 import sisterMariePortrait from "@/assets/images/sister-marie-portrait.png";
 import waterRipples from "@/assets/images/lourdes-water-ripples.png";
 import { ArrowRight, Sparkles } from "lucide-react";
+import { Link } from "wouter";
 
 type StatusState = "busy" | "available";
 
@@ -302,19 +303,21 @@ export default function LanderPage() {
             </div>
 
             <div className="mt-6 flex flex-col items-center gap-2" data-testid="block-cta">
-              <Button
-                size="lg"
-                disabled={!ready}
-                className={[
-                  "min-h-11 w-full max-w-md rounded-xl px-6",
-                  "shadow-md transition-all",
-                  !ready ? "opacity-60" : "hover:-translate-y-0.5",
-                ].join(" ")}
-                data-testid="button-talk-to-sister-marie"
-              >
-                Talk to Sister Marie
-                <ArrowRight className="h-4 w-4" />
-              </Button>
+              <Link href="/chat" data-testid="link-talk-to-sister-marie">
+                <Button
+                  size="lg"
+                  disabled={!ready}
+                  className={[
+                    "min-h-11 w-full max-w-md rounded-xl px-6",
+                    "shadow-md transition-all",
+                    !ready ? "opacity-60" : "hover:-translate-y-0.5",
+                  ].join(" ")}
+                  data-testid="button-talk-to-sister-marie"
+                >
+                  Talk to Sister Marie
+                  <ArrowRight className="h-4 w-4" />
+                </Button>
+              </Link>
               <div className="text-xs text-muted-foreground" data-testid="text-cta-duration">
                 Takes 3 minutes
               </div>
