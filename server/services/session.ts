@@ -27,11 +27,14 @@ export function createSession(): SessionContext {
     bucket: null,
     personName: null,
     userName: null,
+    userEmail: null,
     relationship: null,
     situationDetail: null,
     paymentStatus: null,
     flags: {
+      userNameCaptured: false,
       nameCaptured: false,
+      emailCaptured: false,
       readyForPayment: false,
       crisisFlag: false,
       inappropriateCount: 0,
@@ -127,14 +130,20 @@ export function setPhase(
 export function updateExtracted(
   sessionId: string,
   extracted: {
+    userName?: string;
     personName?: string;
     relationship?: string;
     situationSummary?: string;
+    userEmail?: string;
   }
 ): SessionContext | null {
   const session = sessions.get(sessionId);
   if (!session) return null;
 
+  if (extracted.userName) {
+    session.userName = extracted.userName;
+    session.flags.userNameCaptured = true;
+  }
   if (extracted.personName) {
     session.personName = extracted.personName;
     session.flags.nameCaptured = true;
@@ -144,6 +153,10 @@ export function updateExtracted(
   }
   if (extracted.situationSummary) {
     session.situationDetail = extracted.situationSummary;
+  }
+  if (extracted.userEmail) {
+    session.userEmail = extracted.userEmail;
+    session.flags.emailCaptured = true;
   }
 
   sessions.set(sessionId, session);

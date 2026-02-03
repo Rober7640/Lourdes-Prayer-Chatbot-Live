@@ -88,15 +88,15 @@ export async function registerRoutes(
       // Add user's bucket selection to history
       const bucketLabels: Record<string, string> = {
         family_reconciliation: "A Family Wound",
-        healing_health: "Healing for Someone Ill",
+        healing_health: "Healing for Someone ill",
         protection: "Protection for a Loved One",
         grief: "Grief or Loss",
         guidance: "Guidance in a Difficult Season",
       };
       addToHistory(sessionId, "user", `[Selected: ${bucketLabels[bucket]}]`);
 
-      // Get acknowledgment for this bucket
-      const acknowledgment = getBucketAcknowledgment(bucket);
+      // Get acknowledgment for this bucket (pass userName for personalization)
+      const acknowledgment = getBucketAcknowledgment(bucket, session.userName);
       addAssistantMessages(sessionId, acknowledgment.messages);
 
       res.json({
@@ -108,6 +108,79 @@ export async function registerRoutes(
     } catch (error) {
       console.error("Error selecting bucket:", error);
       res.status(500).json({ error: "Failed to process bucket selection" });
+    }
+  });
+
+  /**
+   * POST /api/chat/email
+   * Capture user's email address
+   */
+  app.post("/api/chat/email", async (req, res) => {
+    try {
+      const { sessionId, email } = req.body;
+
+      if (!sessionId || !email) {
+        return res.status(400).json({ error: "Missing sessionId or email" });
+      }
+
+      const session = getSession(sessionId);
+      if (!session) {
+        return res.status(404).json({ error: "Session not found" });
+      }
+
+      // Basic email validation
+      const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+      if (!emailRegex.test(email)) {
+        return res.status(400).json({ error: "Invalid email format" });
+      }
+
+      // Update session with email
+      updateExtracted(sessionId, { userEmail: email });
+
+      // Add to history
+      addToHistory(sessionId, "user", `[Email: ${email}]`);
+
+      // Get the follow-up question based on bucket
+      const userName = session.userName || "dear";
+      const bucketFollowUps: Record<string, string[]> = {
+        family_reconciliation: [
+          "Thank you.",
+          `Now ${userName}, tell me about this family wound. Is it about someone you've lost touch with, or a relationship that's become strained?`,
+        ],
+        healing_health: [
+          "Thank you.",
+          `Now ${userName}, is this healing intention for yourself, or for someone you love?`,
+        ],
+        protection: [
+          "Thank you.",
+          `Now ${userName}, who is it you're seeking protection for?`,
+        ],
+        grief: [
+          "Thank you.",
+          `Now ${userName}, may I ask who you're grieving?`,
+        ],
+        guidance: [
+          "Thank you.",
+          `Now ${userName}, what decision or season are you navigating right now?`,
+        ],
+      };
+
+      const followUp = bucketFollowUps[session.bucket || ""] || [
+        "Thank you.",
+        `Now ${userName}, tell me what brings you here today.`,
+      ];
+
+      addAssistantMessages(sessionId, followUp);
+
+      res.json({
+        messages: followUp,
+        uiHint: "none",
+        phase: "deepening",
+        emailCaptured: true,
+      });
+    } catch (error) {
+      console.error("Error capturing email:", error);
+      res.status(500).json({ error: "Failed to capture email" });
     }
   });
 
@@ -135,7 +208,7 @@ export async function registerRoutes(
       const response = await generateResponse(message, session);
 
       // Update session with extracted data
-      if (response.extracted.personName || response.extracted.relationship) {
+      if (response.extracted.userName || response.extracted.personName || response.extracted.relationship || response.extracted.userEmail) {
         updateExtracted(sessionId, response.extracted);
       }
 
@@ -212,10 +285,12 @@ export async function registerRoutes(
 
       setPhase(sessionId, "payment");
 
+      const personName = session.personName || "your loved one";
       const paymentTransitionMessages = [
-        `Before I carry ${session.personName || "your loved one"}'s prayer to Lourdes, I'd like to share how this works.`,
-        "Our team lovingly hand-delivers each prayer to the Grotto at Lourdes. We only ask for a small amount to help our messengers cover the time, care, and materials involved.",
-        "The full cost to provide this sacred service is $35 per prayer.",
+        `${personName}'s prayer will be written by hand on blessed parchment.`,
+        "Each week, our pilgrims walk to the sacred Grotto at Lourdes, France — the very place where Our Lady appeared to Saint Bernadette.",
+        "Your prayer will be placed in the waters of the spring, where countless miracles have been recorded.",
+        "We ask only a small offering to help cover the pilgrimage and materials.",
       ];
 
       addAssistantMessages(sessionId, paymentTransitionMessages);

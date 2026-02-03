@@ -2,29 +2,22 @@
 
 ## Current State
 
-### What's Built (UI Mockup)
-- **Landing Page** (`client/src/pages/lander.tsx`) - Complete visual design with:
-  - Sister Marie portrait and status indicator (busy/available)
-  - "How It Works" section, testimonial, CTAs
-  - Footer disclaimer
-
-- **Chat Interface** (`client/src/pages/chat.tsx`) - Hardcoded demo with:
-  - Welcome messages
+### What's Built ✅
+- **Landing Page** (`client/src/pages/lander.tsx`) - Complete visual design
+- **Chat Interface** (`client/src/pages/chat.tsx`) - Fully functional with:
+  - Character-by-character typing animation
   - 5 bucket selection cards
-  - Quick-reply buttons
-  - Typing indicator animation
-  - Email input card
+  - Real-time API integration
   - Message composer
+- **Claude AI Service** (`server/services/claude.ts`) - Sister Marie persona
+- **Session Management** (`server/services/session.ts`) - In-memory (MVP)
+- **Chat API Endpoints** (`server/routes.ts`) - All endpoints working
 
-- **UI Components** - 50+ shadcn/ui components ready
-
-### What's Missing (Backend + Integration)
-- No chat API (`server/routes.ts` is empty)
-- No Claude AI integration
-- No Stripe payment flow
-- Database schema exists but not connected
-- No session/conversation state management
-- No email sending capability
+### What's Missing (Backend)
+- [ ] Database persistence (currently in-memory, localStorage implemented)
+- [ ] Stripe payment integration
+- [ ] AWeber email integration
+- [x] Idle timeout handling (5 min at payment stage)
 
 ---
 
@@ -33,51 +26,51 @@
 ### Phase 1: Database & Core Infrastructure
 
 #### 1.1 Extend Database Schema
-- [ ] Add `prayer_intentions` table:
-  - `id`, `session_id`, `user_id`, `bucket`, `person_name`, `relationship`, `situation_detail`, `desired_outcome`, `status`, `created_at`
-- [ ] Add `chat_sessions` table:
-  - `id`, `visitor_id`, `email`, `phase`, `bucket`, `payment_status`, `conversation_history` (JSONB), `flags`, `created_at`, `updated_at`
-- [ ] Add `payments` table:
-  - `id`, `session_id`, `stripe_payment_id`, `amount`, `tier`, `status`, `created_at`
+- [ ] Add `prayer_intentions` table
+- [ ] Add `chat_sessions` table
+- [ ] Add `payments` table
 - [ ] Add `upsells` table for candles/bundles
 
 #### 1.2 Session Management
-- [ ] Create session service (`server/services/session.ts`)
+- [x] Create session service (`server/services/session.ts`)
 - [ ] Implement visitor identification (cookie-based)
-- [ ] Session state persistence
-- [ ] Timeout handling (30min soft, 2hr hard)
+- [ ] Session state persistence to database
+- [x] Timeout handling (5 min idle at payment → soft close)
+- [x] Session save to localStorage on soft close
 
 ---
 
-### Phase 2: Chat API & Claude Integration
+### Phase 2: Chat API & Claude Integration ✅
 
 #### 2.1 Chat API Endpoints
-- [ ] `POST /api/chat/start` - Initialize session, return welcome message
-- [ ] `POST /api/chat/message` - Process user message, return Claude response
-- [ ] `GET /api/chat/session/:id` - Resume existing session
-- [ ] `POST /api/chat/bucket` - Handle bucket selection
+- [x] `POST /api/chat/start` - Initialize session, return welcome message
+- [x] `POST /api/chat/message` - Process user message, return Claude response
+- [x] `GET /api/chat/session/:id` - Resume existing session
+- [x] `POST /api/chat/bucket` - Handle bucket selection
+- [x] `POST /api/chat/email` - Capture user email
+- [x] `POST /api/chat/payment-ready` - Payment transition
 
 #### 2.2 Claude Integration (`server/services/claude.ts`)
-- [ ] System prompt builder with:
-  - Sister Marie persona (from PRD)
-  - Absolute rules (never admit AI, etc.)
-  - Current phase context
-  - Conversation variables
-- [ ] Conversation history management (last 15 turns)
-- [ ] Response parser (JSON with messages array)
-- [ ] Message chunking (max 25 words per bubble)
+- [x] System prompt builder with Sister Marie persona
+- [x] Absolute rules (never admit AI, max 25 words, etc.)
+- [x] Current phase context
+- [x] Conversation variables extraction
+- [x] Conversation history management (last 30 turns)
+- [x] Response parser (JSON with messages array)
+- [x] Message chunking (max 25 words per bubble)
 
 #### 2.3 Safety & Guardrails
-- [ ] Pre-screen for crisis keywords (suicide, abuse, self-harm)
-- [ ] Pre-screen for AI questions → scripted deflections
-- [ ] Pre-screen for inappropriate content
-- [ ] Response sanitization (no bullets, no promises)
+- [x] Pre-screen for crisis keywords (suicide, abuse, self-harm)
+- [x] Pre-screen for AI questions → scripted deflections
+- [x] Pre-screen for inappropriate content
+- [x] Response sanitization (no bullets, no promises)
 
 #### 2.4 Conversation State Machine
-- [ ] Phase tracking: `welcome` → `bucket_selection` → `deepening` → `payment` → `upsell` → `complete`
-- [ ] Variable extraction (person_name, relationship, situation)
-- [ ] Flags: `name_captured`, `ready_for_payment`, `crisis_flag`
-- [ ] Bucket-specific deepening flows (5 branches: A-E)
+- [x] Phase tracking: `welcome` → `bucket_selection` → `deepening` → `payment` → `complete`
+- [x] Variable extraction (user_name, person_name, relationship, email)
+- [x] Flags: `user_name_captured`, `name_captured`, `email_captured`, `ready_for_payment`
+- [x] Bucket-specific deepening flows (5 branches)
+- [x] Healing → Grief pivot handling
 
 ---
 
@@ -95,8 +88,11 @@
 - [ ] `POST /api/webhook/stripe` - Handle payment events
 
 #### 3.2 Payment Flow in Chat
-- [ ] Render payment tier cards when `ready_for_payment`
-- [ ] Handle hardship flow ("I'm facing financial hardship")
+- [x] Render payment tier cards when `ready_for_payment`
+- [x] Payment tiers: $28 (hardship), $35 (full), $55 (generous)
+- [x] Petition box photo shown before payment card
+- [x] Sister Marie explains process before payment (6 messages)
+- [x] Handle questions at payment stage (Claude redirects gently)
 - [ ] Redirect to Stripe checkout
 - [ ] Handle return from Stripe (success/cancel)
 - [ ] Post-payment confirmation message
@@ -108,32 +104,40 @@
 
 ---
 
-### Phase 4: Email System
+### Phase 4: Email System (AWeber)
 
-#### 4.1 Transactional Emails
-- [ ] Email service setup (SendGrid/Resend)
-- [ ] Prayer confirmation email
+#### 4.1 AWeber Integration
+- [ ] AWeber API service setup (`server/services/aweber.ts`)
+- [ ] OAuth 2.0 token management (refresh tokens)
+- [ ] Add subscriber to list on email capture
+- [ ] Tag subscribers by bucket type
+
+#### 4.2 Transactional Emails
+- [ ] Prayer confirmation email (triggered via AWeber automation)
 - [ ] Payment receipt
 - [ ] Candle photo confirmation (future)
 
-#### 4.2 Recovery Emails
+#### 4.3 Recovery Emails
 - [ ] Abandoned cart sequence (email captured, no payment)
 - [ ] Session recovery links (magic tokens)
 
 ---
 
-### Phase 5: Frontend Integration
+### Phase 5: Frontend Integration ✅
 
 #### 5.1 Connect Chat UI to API
-- [ ] Replace hardcoded messages with API calls
-- [ ] Implement real-time message rendering with delays
-- [ ] Handle UI hints from Claude (`show_buckets`, `show_payment`, etc.)
-- [ ] Display payment tier cards
+- [x] Replace hardcoded messages with API calls
+- [x] Implement real-time message rendering with delays
+- [x] Character-by-character typing animation
+- [x] Handle UI hints from Claude (`show_buckets`, `show_payment`, `show_petition_photo`)
+- [x] Display payment tier cards (3 tiers with quotes and CTAs)
+- [x] Display petition box photo before payment
 - [ ] Handle Stripe redirect
 
 #### 5.2 Session Persistence
-- [ ] Store session ID in localStorage
-- [ ] Handle returning visitors
+- [x] Store session ID in state
+- [x] Store session to localStorage on soft close
+- [ ] Handle returning visitors (resume flow planned)
 - [ ] "I've shared a prayer before" flow
 
 ---
@@ -141,103 +145,125 @@
 ### Phase 6: Polish & Edge Cases
 
 #### 6.1 Error Handling
+- [x] Graceful error messages (Sister Marie persona)
 - [ ] Invalid email format (3 attempts)
 - [ ] Stripe checkout failures
-- [ ] Network errors
+- [ ] Network errors with retry
 - [ ] Session timeout recovery
 
-#### 6.2 Returning User Flows
+#### 6.2 Idle Timeout
+- [x] 5 minute idle at payment stage triggers soft close
+- [x] Soft close messages: "I understand if now isn't the right time..."
+- [x] Session saved to localStorage on soft close
+- [x] Timer resets on user interaction
+
+#### 6.3 Returning User Flows
 - [ ] Abandoned mid-flow detection
 - [ ] Previous customer recognition
 - [ ] Cross-device recognition via email
 
-#### 6.3 Multiple Intentions
+#### 6.4 Multiple Intentions
 - [ ] Support for adding multiple names
 - [ ] Group intentions handling
-- [ ] Bucket pivoting (e.g., Healing → Grief)
+- [x] Bucket pivoting (e.g., Healing → Grief)
 
 ---
 
-## Key Files to Modify/Create
+## Conversation Flow (Current)
 
-| File | Action |
+1. **Welcome** → "May I ask your name?"
+2. **User gives name** → Greet warmly, "What brings you to Our Lady of Lourdes?" + show buckets
+3. **Bucket selected** → Acknowledge + ask for email ("in case we get disconnected")
+4. **Email captured** → Begin deepening ("Is this for yourself or someone you love?")
+5. **Deepening** → Get person's name, situation, compose prayer
+6. **Prayer confirmed** → Claude explains process:
+   - Acknowledge: "Beautiful. I'll carry this prayer for [Name] to Lourdes."
+   - Step 1: Prayer printed with reverence
+   - Step 2: Personal delivery to Grotto + blessing
+   - Step 3: Photos sent to email
+   - Show petition box photo
+   - Explain offering + show payment tiers
+7. **Payment** → Handle questions gently, redirect to payment card
+8. **Idle timeout** (5 min) → Soft close, save session
+9. **Complete** → Confirmation + optional upsell
+
+---
+
+## Prayer Format (Personal Voice)
+
+Prayers use **first-person, personal voice** — not formal third-person announcements.
+
+**Example:**
+> "Blessed Mother, please intercede for my mother, Ng Kim Poh. She is facing pre-diabetes. I pray for her complete healing — that this condition be reversed and her body restored to health. I ask this through your Son, Jesus Christ. Amen."
+
+---
+
+## Key Files
+
+| File | Status |
 |------|--------|
-| `shared/schema.ts` | Extend with new tables |
-| `server/routes.ts` | Add chat API endpoints |
-| `server/services/claude.ts` | **Create** - Claude integration |
-| `server/services/session.ts` | **Create** - Session management |
-| `server/services/payment.ts` | **Create** - Stripe integration |
-| `server/services/email.ts` | **Create** - Email sending |
-| `client/src/pages/chat.tsx` | Connect to real API |
-| `client/src/lib/chatApi.ts` | **Create** - API client |
+| `server/routes.ts` | ✅ Chat API endpoints |
+| `server/services/claude.ts` | ✅ Claude integration |
+| `server/services/session.ts` | ✅ In-memory sessions |
+| `server/services/payment.ts` | ❌ Not created |
+| `server/services/aweber.ts` | ❌ Not created |
+| `client/src/pages/chat.tsx` | ✅ Connected to API |
+| `client/src/lib/typing.ts` | ✅ Typing animation utilities |
 
 ---
 
-## Environment Variables Needed
+## Environment Variables
 
 ```env
+# Required (configured)
 ANTHROPIC_API_KEY=sk-...
+
+# Stripe (pending)
 STRIPE_SECRET_KEY=sk_...
 STRIPE_WEBHOOK_SECRET=whsec_...
 STRIPE_PRICE_ID_19=price_...
 STRIPE_PRICE_ID_28=price_...
 STRIPE_PRICE_ID_35=price_...
 STRIPE_PRICE_ID_55=price_...
-SENDGRID_API_KEY=SG....
+
+# AWeber (pending)
+AWEBER_CLIENT_ID=...
+AWEBER_CLIENT_SECRET=...
+AWEBER_ACCESS_TOKEN=...
+AWEBER_REFRESH_TOKEN=...
+AWEBER_ACCOUNT_ID=...
+AWEBER_LIST_ID=...
+
+# Database (pending)
 DATABASE_URL=postgres://...
 SESSION_SECRET=...
 ```
 
 ---
 
-## Verification Plan
+## Future Refactoring (Post-MVP)
 
-1. **Unit Tests**
-   - Claude response parsing
-   - Session state transitions
-   - Safety guardrail detection
-
-2. **Integration Tests**
-   - Full conversation flow (welcome → payment)
-   - Payment webhook handling
-   - Email delivery
-
-3. **Manual Testing**
-   - Complete happy path (all 5 buckets)
-   - Crisis content triggers resource display
-   - AI question deflection works
-   - Payment tiers render correctly
-   - Returning user is recognized
+#### Prompt Architecture Refactor
+- [ ] Split `claude.ts` into modular structure:
+  ```
+  server/services/
+  ├── claude.ts          # API client + response handling
+  ├── prompts/
+  │   ├── persona.ts     # Sister Marie system prompt
+  │   ├── buckets.ts     # Bucket-specific flows
+  │   └── safety.ts      # Guardrails & deflections
+  └── intents/
+      └── extraction.ts  # Name/relationship parsing
+  ```
+- Benefits: A/B testing prompts, non-engineer editable copy, cleaner git history
+- Priority: After conversation flow is stable
 
 ---
 
-## Recommended Implementation Order
+## Next Steps
 
-### MVP First: Visualize Conversation Flow
-
-1. **Claude integration** (core AI functionality - in-memory state)
-2. **Chat API endpoints** (minimal, using in-memory sessions)
-3. **Frontend connection** (see Sister Marie working!)
-4. **Database schema** (persist conversations)
-5. **Session management** (proper persistence)
-6. **Stripe payment** (monetization)
-7. **Email system** (confirmations)
-8. **Edge cases & polish** (production readiness)
-
-> **Rationale:** Start with Claude + API + Frontend to quickly visualize the conversation flow. Use in-memory state initially, then add database persistence once the conversation feels right.
-
----
-
-## PRD Reference
-
-The full conversation flow script is documented in:
-- `docs/lourdes-chatbot-script-v2 (1).md`
-
-Key sections:
-- **Phase 1-2**: Welcome & Bucket Selection
-- **Phase 3**: Deepening Conversations (5 branches A-E)
-- **Phase 4**: Payment Flow ($19/$28/$35/$55 tiers)
-- **Phase 5**: Upsell/Downsell (candle $19, bundle $67)
-- **FAQ Handling**: Objection responses
-- **Crisis Protocol**: Suicide, abuse, danger detection
-- **Claude API Integration**: System prompt, absolute rules, response format
+1. **Stripe payment integration** - Enable monetization (wire up payment buttons)
+2. **AWeber email integration** - Capture leads, send confirmations
+3. **Database persistence** - Save sessions and prayers (replace in-memory + localStorage)
+4. **Resume flow** - Handle returning visitors from localStorage/database
+5. **Re-enable typing animations** - Currently disabled for testing (set delays back in `typing.ts`)
