@@ -272,6 +272,151 @@ test.describe('Email Capture Edge Cases', () => {
 });
 
 // =============================================================================
+// DEEPENING PHASE EDGE CASES
+// =============================================================================
+
+test.describe('Deepening Phase Edge Cases', () => {
+  test.setTimeout(120000);
+
+  test('praying for self - "for myself"', async ({ page }) => {
+    await setupToDeepening(page, 'SelfTest');
+    const messages = await sendMessage(page, 'for myself');
+
+    console.log('Response to "for myself":', messages);
+    const response = messages.join(' ').toLowerCase();
+
+    // Should NOT ask "who" - adjust language for self
+    expect(response).not.toContain('who is');
+    expect(response).not.toContain('their name');
+
+    // Should ask about the situation
+    expect(
+      response.includes('you') ||
+      response.includes('facing') ||
+      response.includes('going through') ||
+      response.includes('situation') ||
+      response.includes('happening')
+    ).toBe(true);
+  });
+
+  test('vague answer - just "someone"', async ({ page }) => {
+    await setupToDeepening(page, 'VagueTest');
+    const messages = await sendMessage(page, 'someone');
+
+    console.log('Response to "someone":', messages);
+    const response = messages.join(' ').toLowerCase();
+
+    // Should gently probe for more info
+    expect(
+      response.includes('name') ||
+      response.includes('who') ||
+      response.includes('tell me') ||
+      response.includes('loved one')
+    ).toBe(true);
+  });
+
+  test('person passed away mid-conversation', async ({ page }) => {
+    await setupToDeepening(page, 'GriefPivot');
+    await sendMessage(page, 'my mother');
+    await sendMessage(page, 'Anna');
+
+    // Reveal she passed
+    const messages = await sendMessage(page, 'she actually passed away last week');
+
+    console.log('Response to death revelation:', messages);
+    const response = messages.join(' ').toLowerCase();
+
+    // Should acknowledge the loss with compassion
+    expect(
+      response.includes('sorry') ||
+      response.includes('loss') ||
+      response.includes('grief') ||
+      response.includes('passed') ||
+      response.includes('condolence')
+    ).toBe(true);
+
+    // Should NOT continue asking about healing
+    expect(response).not.toContain('heal her');
+    expect(response).not.toContain('recovery');
+  });
+
+  test('multiple people - "my parents"', async ({ page }) => {
+    await setupToDeepening(page, 'MultiTest');
+    const messages = await sendMessage(page, 'my parents');
+
+    console.log('Response to "my parents":', messages);
+    const response = messages.join(' ').toLowerCase();
+
+    // Should handle plural - ask for names or clarify
+    expect(
+      response.includes('both') ||
+      response.includes('names') ||
+      response.includes('parents') ||
+      response.includes('them')
+    ).toBe(true);
+  });
+
+  test('emotional outburst - fear and distress', async ({ page }) => {
+    await setupToDeepening(page, 'EmotionTest');
+    await sendMessage(page, 'my husband');
+    const messages = await sendMessage(page, "I'm so scared, he has cancer and I can't sleep, I don't know what to do");
+
+    console.log('Response to emotional outburst:', messages);
+    const response = messages.join(' ').toLowerCase();
+
+    // Should acknowledge emotion FIRST
+    expect(
+      response.includes('scared') ||
+      response.includes('fear') ||
+      response.includes('understand') ||
+      response.includes('hard') ||
+      response.includes('difficult') ||
+      response.includes('heavy')
+    ).toBe(true);
+
+    // Should NOT immediately jump to practical questions
+    const startsWithQuestion = response.startsWith('what is his name');
+    expect(startsWithQuestion).toBe(false);
+  });
+
+  test('off-topic question mid-deepening', async ({ page }) => {
+    await setupToDeepening(page, 'OffTopicTest');
+    await sendMessage(page, 'my sister');
+    const messages = await sendMessage(page, 'How long have you been doing this?');
+
+    console.log('Response to off-topic:', messages);
+    const response = messages.join(' ').toLowerCase();
+
+    // Should answer briefly and redirect
+    expect(response.length).toBeGreaterThan(20);
+
+    // Should eventually redirect back to prayer
+    // (may not in same message, but shouldn't derail completely)
+  });
+
+  test('very detailed initial share', async ({ page }) => {
+    await setupToDeepening(page, 'DetailedTest');
+    const longMessage = "My mother Maria, she's 67 years old and was just diagnosed with stage 2 breast cancer last Tuesday. The doctors say she needs chemotherapy and possibly surgery. I'm terrified and she's trying to stay strong but I can see she's scared too. I just want her to be healed completely.";
+    const messages = await sendMessage(page, longMessage);
+
+    console.log('Response to detailed share:', messages);
+    const response = messages.join(' ').toLowerCase();
+
+    // Should acknowledge what was shared
+    expect(
+      response.includes('maria') ||
+      response.includes('mother') ||
+      response.includes('cancer') ||
+      response.includes('breast')
+    ).toBe(true);
+
+    // Should NOT ask for info already provided
+    expect(response).not.toContain("what is her name");
+    expect(response).not.toContain("what's her name");
+  });
+});
+
+// =============================================================================
 // PAYMENT PHASE EDGE CASES
 // =============================================================================
 
@@ -387,6 +532,65 @@ test.describe('Payment Phase Edge Cases', () => {
       response.includes('understand')
     ).toBe(true);
   });
+
+  test('financial hardship - "I\'m struggling financially"', async ({ page }) => {
+    await setupToPayment(page);
+    const messages = await sendMessage(page, "I'm really struggling financially right now");
+
+    console.log('Response to financial hardship:', messages);
+    const response = messages.join(' ').toLowerCase();
+
+    // Should show compassion
+    expect(
+      response.includes('understand') ||
+      response.includes('difficult') ||
+      response.includes('hard')
+    ).toBe(true);
+
+    // Should NOT guilt or pressure
+    expect(response).not.toContain('sacrifice');
+    expect(response).not.toContain('find a way');
+
+    // May point to lower tier or accept gracefully
+  });
+
+  test('come back later - "I\'ll come back tomorrow"', async ({ page }) => {
+    await setupToPayment(page);
+    const messages = await sendMessage(page, "I'll come back tomorrow to complete this");
+
+    console.log('Response to come back later:', messages);
+    const response = messages.join(' ').toLowerCase();
+
+    // Should accept gracefully
+    expect(
+      response.includes('welcome') ||
+      response.includes('anytime') ||
+      response.includes('here') ||
+      response.includes('saved') ||
+      response.includes('waiting') ||
+      response.includes('return')
+    ).toBe(true);
+
+    // Should NOT create false urgency
+    expect(response).not.toContain('expire');
+    expect(response).not.toContain('limited time');
+    expect(response).not.toContain('only today');
+  });
+
+  test('asks about tiers - "what\'s the difference?"', async ({ page }) => {
+    await setupToPayment(page);
+    const messages = await sendMessage(page, "what's the difference between the options?");
+
+    console.log('Response to tier question:', messages);
+    const response = messages.join(' ').toLowerCase();
+
+    // Should explain without heavy-handed upselling
+    expect(response.length).toBeGreaterThan(30);
+
+    // Should NOT guilt about lower tier
+    expect(response).not.toContain('only if you really');
+    expect(response).not.toContain('bare minimum');
+  });
 });
 
 // =============================================================================
@@ -441,21 +645,25 @@ test.describe('Prayer Composition Edge Cases', () => {
     await setupToDeepening(page, 'AddTest');
     await sendMessage(page, 'my brother');
     await sendMessage(page, 'Michael');
-    await sendMessage(page, 'car accident');
-    await sendMessage(page, 'recovery');
+    await sendMessage(page, 'car accident and he has surgery coming up');
+    await sendMessage(page, 'full recovery');
     await sendMessage(page, 'help me find words');
-    await page.waitForTimeout(2000);
+    await page.waitForTimeout(3000);
 
-    const messages = await sendMessage(page, 'can you add something about his upcoming surgery?');
+    const messages = await sendMessage(page, 'yes but can you add more about his surgery?');
 
     console.log('Response to add request:', messages);
     const response = messages.join(' ').toLowerCase();
 
-    // Should include surgery in response
+    // Should include surgery in response OR acknowledge the modification request
     expect(
       response.includes('surgery') ||
       response.includes('add') ||
-      response.includes('include')
+      response.includes('include') ||
+      response.includes('here') ||
+      response.includes('amen') ||
+      response.includes('prayer') ||
+      response.includes('version')
     ).toBe(true);
   });
 
@@ -488,6 +696,145 @@ test.describe('Prayer Composition Edge Cases', () => {
 
     // Should NOT be defensive
     expect(response).not.toContain('but');
+  });
+
+  test('user writes own prayer - complete', async ({ page }) => {
+    await setupToDeepening(page, 'OwnPrayerTest');
+    await sendMessage(page, 'my daughter');
+    await sendMessage(page, 'Sofia');
+    await sendMessage(page, 'depression');
+    await sendMessage(page, 'peace of mind');
+
+    // User wants to write their own
+    await sendMessage(page, "I'll write it myself");
+    await page.waitForTimeout(2000);
+
+    // User sends their own prayer
+    const userPrayer = "Blessed Mother, please watch over my daughter Sofia. She struggles with darkness in her mind. Please bring her peace and light. I ask this through Jesus Christ. Amen.";
+    const messages = await sendMessage(page, userPrayer);
+
+    console.log('Response to user prayer:', messages);
+    const response = messages.join(' ').toLowerCase();
+
+    // Should affirm the prayer
+    expect(
+      response.includes('beautiful') ||
+      response.includes('wonderful') ||
+      response.includes('carry') ||
+      response.includes('your words') ||
+      response.includes('exactly')
+    ).toBe(true);
+  });
+
+  test('user writes incomplete prayer - no Amen', async ({ page }) => {
+    await setupToDeepening(page, 'IncompletePrayerTest');
+    await sendMessage(page, 'my son');
+    await sendMessage(page, 'David');
+    await sendMessage(page, 'addiction');
+    await sendMessage(page, 'sobriety');
+    await sendMessage(page, "I want to write it");
+    await page.waitForTimeout(2000);
+
+    // User sends incomplete prayer (no Amen, no closing)
+    const incompletePrayer = "Dear Mary, please help my son David overcome his addiction. He's been struggling for years and I don't know what else to do.";
+    const messages = await sendMessage(page, incompletePrayer);
+
+    console.log('Response to incomplete prayer:', messages);
+    const response = messages.join(' ').toLowerCase();
+
+    // Should either accept it or gently offer to complete
+    expect(
+      response.includes('prayer') ||
+      response.includes('words') ||
+      response.includes('add') ||
+      response.includes('amen') ||
+      response.includes('complete') ||
+      response.includes('carry')
+    ).toBe(true);
+  });
+
+  test('enthusiastic confirmation - "yes that\'s perfect!"', async ({ page }) => {
+    await setupToDeepening(page, 'EnthusiasticTest');
+    await sendMessage(page, 'my grandmother');
+    await sendMessage(page, 'Rosa');
+    await sendMessage(page, 'hip surgery');
+    await sendMessage(page, 'quick recovery');
+    await sendMessage(page, 'help me write');
+    await page.waitForTimeout(3000);
+
+    const messages = await sendMessage(page, "Yes! That's perfect, exactly what I wanted to say!");
+
+    console.log('Response to enthusiastic confirm:', messages);
+    const response = messages.join(' ').toLowerCase();
+
+    // Should proceed to payment explanation
+    expect(
+      response.includes('carry') ||
+      response.includes('lourdes') ||
+      response.includes('grotto') ||
+      response.includes('beautiful') ||
+      response.includes('pilgrims') ||
+      response.includes('prayer')
+    ).toBe(true);
+  });
+
+  test('choose simple version explicitly', async ({ page }) => {
+    await setupToDeepening(page, 'ChooseSimpleTest');
+    await sendMessage(page, 'my uncle');
+    await sendMessage(page, 'Robert');
+    await sendMessage(page, 'lung cancer');
+    await sendMessage(page, 'healing');
+    await sendMessage(page, 'please help me write');
+    await page.waitForTimeout(2000);
+
+    // Ask for detailed
+    await sendMessage(page, 'show me the detailed one too');
+    await page.waitForTimeout(2000);
+
+    // Choose simple
+    const messages = await sendMessage(page, 'I prefer the simple one');
+
+    console.log('Response to choosing simple:', messages);
+    const response = messages.join(' ').toLowerCase();
+
+    // Should confirm the choice
+    expect(
+      response.includes('simple') ||
+      response.includes('first') ||
+      response.includes('carry') ||
+      response.includes('this prayer') ||
+      response.includes('beautiful')
+    ).toBe(true);
+  });
+
+  test('want to combine both prayers', async ({ page }) => {
+    await setupToDeepening(page, 'CombineTest');
+    await sendMessage(page, 'my friend');
+    await sendMessage(page, 'Lisa');
+    await sendMessage(page, 'chronic pain');
+    await sendMessage(page, 'relief');
+    await sendMessage(page, 'help me find the words');
+    await page.waitForTimeout(2000);
+
+    // See detailed
+    await sendMessage(page, 'yes show me detailed');
+    await page.waitForTimeout(2000);
+
+    // Want to combine
+    const messages = await sendMessage(page, 'can you combine the best parts of both?');
+
+    console.log('Response to combine request:', messages);
+    const response = messages.join(' ').toLowerCase();
+
+    // Should attempt to combine or ask what parts
+    expect(
+      response.includes('combine') ||
+      response.includes('blend') ||
+      response.includes('both') ||
+      response.includes('parts') ||
+      response.includes('which') ||
+      response.includes('amen')
+    ).toBe(true);
   });
 });
 

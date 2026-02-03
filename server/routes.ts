@@ -25,7 +25,69 @@ import {
   setPrayerSubPhase,
   incrementInappropriate,
   setCrisisFlag,
+  savePrayerIntention,
 } from "./services/session";
+
+// ============================================================================
+// HELPER FUNCTIONS FOR PRAYER EXTRACTION
+// ============================================================================
+
+/**
+ * Extract the prayer text from messages or conversation history
+ * Prayers typically contain "Amen" and prayer indicators
+ */
+function extractPrayerText(
+  currentMessages: string[],
+  conversationHistory: Array<{ role: string; content: string }>
+): string | null {
+  // First check current messages for a prayer
+  for (const msg of currentMessages) {
+    if (looksLikePrayer(msg)) {
+      return msg;
+    }
+  }
+
+  // Then check recent assistant messages in history (look backwards)
+  for (let i = conversationHistory.length - 1; i >= 0; i--) {
+    const entry = conversationHistory[i];
+    if (entry.role === "assistant" && looksLikePrayer(entry.content)) {
+      return entry.content;
+    }
+    // Don't look back more than 10 messages
+    if (conversationHistory.length - i > 10) break;
+  }
+
+  return null;
+}
+
+/**
+ * Check if a message looks like a prayer
+ */
+function looksLikePrayer(text: string): boolean {
+  const lower = text.toLowerCase();
+  const hasAmen = lower.includes("amen");
+  const hasPrayerAddress =
+    lower.includes("blessed mother") ||
+    lower.includes("holy mary") ||
+    lower.includes("our lady") ||
+    lower.includes("dear god") ||
+    lower.includes("dear lord");
+  const hasPetition =
+    lower.includes("please intercede") ||
+    lower.includes("please pray") ||
+    lower.includes("i ask") ||
+    lower.includes("i pray");
+
+  // Must have Amen and at least one other indicator
+  return hasAmen && (hasPrayerAddress || hasPetition);
+}
+
+/**
+ * Check if the user wrote their own prayer
+ */
+function didUserWritePrayer(userMessage: string): boolean {
+  return looksLikePrayer(userMessage);
+}
 
 export async function registerRoutes(
   httpServer: Server,
@@ -41,11 +103,11 @@ export async function registerRoutes(
    */
   app.post("/api/chat/start", async (req, res) => {
     try {
-      const session = createSession();
+      const session = await createSession();
       const welcome = getWelcomeMessages();
 
       // Add welcome messages to history
-      addAssistantMessages(session.sessionId, welcome.messages);
+      await addAssistantMessages(session.sessionId, welcome.messages);
 
       res.json({
         sessionId: session.sessionId,
@@ -90,7 +152,7 @@ export async function registerRoutes(
       }
 
       // Update session with bucket
-      setBucket(sessionId, bucket);
+      await setBucket(sessionId, bucket);
 
       // Add user's bucket selection to history
       const bucketLabels: Record<string, string> = {
@@ -100,11 +162,11 @@ export async function registerRoutes(
         grief: "Grief or Loss",
         guidance: "Guidance in a Difficult Season",
       };
-      addToHistory(sessionId, "user", `[Selected: ${bucketLabels[bucket]}]`);
+      await addToHistory(sessionId, "user", `[Selected: ${bucketLabels[bucket]}]`);
 
       // Get acknowledgment for this bucket (pass userName for personalization)
       const acknowledgment = getBucketAcknowledgment(bucket, session.userName);
-      addAssistantMessages(sessionId, acknowledgment.messages);
+      await addAssistantMessages(sessionId, acknowledgment.messages);
 
       res.json({
         messages: acknowledgment.messages,
@@ -142,10 +204,10 @@ export async function registerRoutes(
       }
 
       // Update session with email
-      updateExtracted(sessionId, { userEmail: email });
+      await updateExtracted(sessionId, { userEmail: email });
 
       // Add to history
-      addToHistory(sessionId, "user", `[Email: ${email}]`);
+      await addToHistory(sessionId, "user", `[Email: ${email}]`);
 
       // Get the follow-up question based on bucket
       const userName = session.userName || "dear";
@@ -177,7 +239,7 @@ export async function registerRoutes(
         `Now ${userName}, tell me what brings you here today.`,
       ];
 
-      addAssistantMessages(sessionId, followUp);
+      await addAssistantMessages(sessionId, followUp);
 
       res.json({
         messages: followUp,
@@ -209,19 +271,32 @@ export async function registerRoutes(
       }
 
       // Add user message to history
-      addToHistory(sessionId, "user", message);
+      await addToHistory(sessionId, "user", message);
 
       // Generate Claude response
       const response = await generateResponse(message, session);
 
       // Update session with extracted data
       if (response.extracted.userName || response.extracted.personName || response.extracted.relationship || response.extracted.userEmail) {
-        updateExtracted(sessionId, response.extracted);
+        await updateExtracted(sessionId, response.extracted);
       }
 
       // Handle flags
       if (response.flags.readyForPayment) {
-        setReadyForPayment(sessionId);
+        await setReadyForPayment(sessionId);
+
+        // Extract and save the confirmed prayer
+        // Look for the prayer in recent conversation history or current response
+        const prayerText = extractPrayerText(response.messages, session.conversationHistory);
+        if (prayerText) {
+          // Determine if prayer was user-written or Claude-composed
+          const userWrotePrayer = didUserWritePrayer(message);
+          await savePrayerIntention(
+            sessionId,
+            prayerText,
+            userWrotePrayer ? "user" : "claude"
+          );
+        }
       }
       if (response.flags.conversationComplete) {
         setPhase(sessionId, "complete");
@@ -254,7 +329,7 @@ export async function registerRoutes(
       }
 
       // Add assistant messages to history
-      addAssistantMessages(sessionId, response.messages);
+      await addAssistantMessages(sessionId, response.messages);
 
       // Get updated session for phase info
       const updatedSession = getSession(sessionId);
@@ -326,7 +401,7 @@ export async function registerRoutes(
         "We ask only a small offering to help cover the pilgrimage and materials.",
       ];
 
-      addAssistantMessages(sessionId, paymentTransitionMessages);
+      await addAssistantMessages(sessionId, paymentTransitionMessages);
 
       res.json({
         messages: paymentTransitionMessages,

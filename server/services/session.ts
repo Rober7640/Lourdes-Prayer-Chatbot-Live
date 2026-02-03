@@ -5,9 +5,11 @@ import type {
   BucketType,
   PrayerSubPhase,
 } from "./claude";
+import * as dbStorage from "./db-storage";
 
 // ============================================================================
-// IN-MEMORY SESSION STORE (MVP - will migrate to database later)
+// IN-MEMORY SESSION STORE (fast access cache)
+// Database is used for persistence; in-memory for working data
 // ============================================================================
 
 const sessions = new Map<string, SessionContext>();
@@ -15,12 +17,31 @@ const sessions = new Map<string, SessionContext>();
 // Session timeout: 30 minutes
 const SESSION_TIMEOUT_MS = 30 * 60 * 1000;
 
+// Flag to enable/disable database persistence
+const DB_ENABLED = !!process.env.DATABASE_URL;
+
 // ============================================================================
 // SESSION CRUD
 // ============================================================================
 
-export function createSession(): SessionContext {
-  const sessionId = randomUUID();
+export async function createSession(): Promise<SessionContext> {
+  let sessionId: string;
+
+  // Create session in database first (if enabled) to get the ID
+  if (DB_ENABLED) {
+    try {
+      const dbSession = await dbStorage.createSession({
+        phase: "welcome",
+        status: "active",
+      });
+      sessionId = dbSession.id;
+    } catch (error) {
+      console.error("Failed to create DB session, using local ID:", error);
+      sessionId = randomUUID();
+    }
+  } else {
+    sessionId = randomUUID();
+  }
 
   const session: SessionContext = {
     sessionId,
@@ -73,11 +94,11 @@ export function deleteSession(sessionId: string): boolean {
 // CONVERSATION HISTORY
 // ============================================================================
 
-export function addToHistory(
+export async function addToHistory(
   sessionId: string,
   role: "user" | "assistant",
   content: string
-): void {
+): Promise<void> {
   const session = sessions.get(sessionId);
   if (!session) return;
 
@@ -89,31 +110,58 @@ export function addToHistory(
   }
 
   sessions.set(sessionId, session);
+
+  // Persist message to database
+  if (DB_ENABLED) {
+    try {
+      await dbStorage.saveMessage({
+        sessionId,
+        role,
+        content,
+        phase: session.phase,
+      });
+    } catch (error) {
+      console.error("Failed to save message to DB:", error);
+    }
+  }
 }
 
-export function addAssistantMessages(
+export async function addAssistantMessages(
   sessionId: string,
   messages: string[]
-): void {
+): Promise<void> {
   // Join messages for history (Claude sees them as one response)
   const combinedContent = messages.join(" ");
-  addToHistory(sessionId, "assistant", combinedContent);
+  await addToHistory(sessionId, "assistant", combinedContent);
 }
 
 // ============================================================================
 // STATE TRANSITIONS
 // ============================================================================
 
-export function setBucket(
+export async function setBucket(
   sessionId: string,
   bucket: BucketType
-): SessionContext | null {
+): Promise<SessionContext | null> {
   const session = sessions.get(sessionId);
   if (!session) return null;
 
   session.bucket = bucket;
   session.phase = "deepening";
   sessions.set(sessionId, session);
+
+  // Sync to database
+  if (DB_ENABLED) {
+    try {
+      await dbStorage.updateSession(sessionId, {
+        bucket,
+        phase: "deepening",
+      });
+    } catch (error) {
+      console.error("Failed to sync bucket to DB:", error);
+    }
+  }
+
   return session;
 }
 
@@ -129,7 +177,7 @@ export function setPhase(
   return session;
 }
 
-export function updateExtracted(
+export async function updateExtracted(
   sessionId: string,
   extracted: {
     userName?: string;
@@ -138,7 +186,7 @@ export function updateExtracted(
     situationSummary?: string;
     userEmail?: string;
   }
-): SessionContext | null {
+): Promise<SessionContext | null> {
   const session = sessions.get(sessionId);
   if (!session) return null;
 
@@ -162,10 +210,25 @@ export function updateExtracted(
   }
 
   sessions.set(sessionId, session);
+
+  // Sync to database
+  if (DB_ENABLED) {
+    try {
+      await dbStorage.updateSession(sessionId, {
+        userName: session.userName,
+        userEmail: session.userEmail,
+        bucket: session.bucket,
+        phase: session.phase,
+      });
+    } catch (error) {
+      console.error("Failed to sync session to DB:", error);
+    }
+  }
+
   return session;
 }
 
-export function setReadyForPayment(sessionId: string): SessionContext | null {
+export async function setReadyForPayment(sessionId: string): Promise<SessionContext | null> {
   const session = sessions.get(sessionId);
   if (!session) return null;
 
@@ -173,7 +236,56 @@ export function setReadyForPayment(sessionId: string): SessionContext | null {
   session.phase = "payment";
   session.prayerSubPhase = "confirmed";
   sessions.set(sessionId, session);
+
+  // Sync to database
+  if (DB_ENABLED) {
+    try {
+      await dbStorage.updateSession(sessionId, {
+        phase: "payment",
+        paymentStatus: "pending",
+      });
+    } catch (error) {
+      console.error("Failed to sync payment ready to DB:", error);
+    }
+  }
+
   return session;
+}
+
+// ============================================================================
+// PRAYER INTENTION PERSISTENCE
+// ============================================================================
+
+export async function savePrayerIntention(
+  sessionId: string,
+  prayerText: string,
+  prayerSource: "claude" | "user"
+): Promise<number | null> {
+  const session = sessions.get(sessionId);
+  if (!session) return null;
+
+  if (!DB_ENABLED) {
+    console.log("Database not enabled - prayer not persisted");
+    return null;
+  }
+
+  try {
+    const prayer = await dbStorage.savePrayerIntention({
+      sessionId,
+      personName: session.personName,
+      relationship: session.relationship,
+      situation: session.situationDetail,
+      prayerText,
+      prayerSource,
+      bucket: session.bucket,
+      status: "pending",
+    });
+    console.log(`Prayer intention saved: ID ${prayer.id}`);
+    return prayer.id;
+  } catch (error) {
+    console.error("Failed to save prayer intention:", error);
+    return null;
+  }
 }
 
 export function setPrayerSubPhase(
