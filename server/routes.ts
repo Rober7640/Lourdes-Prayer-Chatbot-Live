@@ -5,7 +5,13 @@ import {
   generateResponse,
   getWelcomeMessages,
   getBucketAcknowledgment,
+  classifyPrayerIntent,
+  classifyEmailIntent,
+  classifyPaymentIntent,
   type BucketType,
+  type PrayerSubPhase,
+  type EmailIntent,
+  type PaymentIntent,
 } from "./services/claude";
 import {
   createSession,
@@ -16,6 +22,7 @@ import {
   updateExtracted,
   setReadyForPayment,
   setPhase,
+  setPrayerSubPhase,
   incrementInappropriate,
   setCrisisFlag,
 } from "./services/session";
@@ -218,6 +225,32 @@ export async function registerRoutes(
       }
       if (response.flags.conversationComplete) {
         setPhase(sessionId, "complete");
+      }
+
+      // Track prayer sub-phase transitions based on response content
+      if (session.phase === "deepening") {
+        const combinedResponse = response.messages.join(" ").toLowerCase();
+
+        // Detect prayer sub-phase from response patterns
+        if (combinedResponse.includes("would you like to write the prayer") ||
+            combinedResponse.includes("would you like me to help you find the words")) {
+          setPrayerSubPhase(sessionId, "asking_preference");
+        } else if (combinedResponse.includes("here's a simple") ||
+                   combinedResponse.includes("here is a simple") ||
+                   (combinedResponse.includes("amen") && combinedResponse.includes("would you like to see") && combinedResponse.includes("detailed"))) {
+          setPrayerSubPhase(sessionId, "simple_offered");
+        } else if (combinedResponse.includes("here's a more detailed") ||
+                   combinedResponse.includes("here is a more detailed") ||
+                   combinedResponse.includes("here's the detailed")) {
+          setPrayerSubPhase(sessionId, "detailed_offered");
+        } else if (combinedResponse.includes("which prayer speaks to your heart") ||
+                   combinedResponse.includes("which version") ||
+                   combinedResponse.includes("which one")) {
+          setPrayerSubPhase(sessionId, "both_offered");
+        } else if (combinedResponse.includes("is this the prayer you'd like me to carry") ||
+                   combinedResponse.includes("is this what you'd like me to carry")) {
+          setPrayerSubPhase(sessionId, "awaiting_confirm");
+        }
       }
 
       // Add assistant messages to history

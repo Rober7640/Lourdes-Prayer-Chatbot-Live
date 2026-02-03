@@ -35,6 +35,7 @@ export interface SessionContext {
   relationship: string | null;
   situationDetail: string | null;
   paymentStatus: "pending" | "completed" | "declined" | null;
+  prayerSubPhase: PrayerSubPhase;
   flags: {
     userNameCaptured: boolean;
     nameCaptured: boolean;
@@ -119,6 +120,358 @@ const AI_QUESTION_PATTERNS = [
 ];
 
 // ============================================================================
+// PRAYER INTENT CLASSIFICATION
+// ============================================================================
+
+export type PrayerIntent =
+  | "confirm"      // "yes", "perfect", "that's the one"
+  | "reject"       // "no", "I don't like it", "start over"
+  | "modify"       // "make it shorter", "add X", "change Y"
+  | "choose_simple"   // "the first one", "the simple one"
+  | "choose_detailed" // "the second one", "the detailed one"
+  | "write_own"    // user types their own prayer text
+  | "combine"      // "can you combine both?"
+  | "question"     // "what happens next?", "how long is it?"
+  | "hesitation"   // "I'm not sure", "let me think"
+  | "unclear";     // couldn't classify - let Claude decide
+
+export type PrayerSubPhase =
+  | "gathering_info"      // Still collecting name, situation, etc.
+  | "asking_preference"   // "Would you like to write or shall I help?"
+  | "simple_offered"      // Simple prayer was just shown
+  | "detailed_offered"    // Detailed prayer was just shown
+  | "both_offered"        // User has seen both, asked to choose
+  | "awaiting_confirm"    // Prayer selected, awaiting final "yes"
+  | "confirmed";          // User confirmed, ready for payment
+
+const PRAYER_INTENT_PATTERNS: Record<string, RegExp[]> = {
+  confirm: [
+    /^yes\b/i,
+    /^yep\b/i,
+    /^yeah\b/i,
+    /\bperfect\b/i,
+    /\bthat'?s? (good|great|the one|it|beautiful|wonderful)\b/i,
+    /\blove it\b/i,
+    /\bbeautiful\b/i,
+    /\bwonderful\b/i,
+    /\bexactly (right|what i wanted)\b/i,
+    /\bplease (carry|take|bring) (it|this|that)\b/i,
+    /\bcarry (it|this|that|the prayer)\b/i,
+  ],
+  reject: [
+    /^no[,.]?\s/i,
+    /\bdon'?t like\b/i,
+    /\btry again\b/i,
+    /\bstart over\b/i,
+    /\bnot (right|quite|what i)\b/i,
+    /\bdoesn'?t (feel|sound|seem) right\b/i,
+    /\bcan you redo\b/i,
+    /\bthat'?s not\b/i,
+  ],
+  modify: [
+    /\bshorter\b/i,
+    /\blonger\b/i,
+    /\badd\s/i,
+    /\bchange\s/i,
+    /\bremove\s/i,
+    /\binstead of\b/i,
+    /\bmore (specific|detailed|personal)\b/i,
+    /\bless (formal|wordy|long)\b/i,
+    /\bcan you (include|mention|put)\b/i,
+    /\bwould you (include|mention|add)\b/i,
+    /\bi'?d like (it|you) to (include|add|mention)\b/i,
+    /\bmake it\b/i,
+    /\btweak\b/i,
+    /\badjust\b/i,
+  ],
+  choose_simple: [
+    /\b(the )?(first|simple|simpler|short|shorter) (one|prayer|version)\b/i,
+    /\bfirst one\b/i,
+    /\bsimple one\b/i,
+    /\bthe simple\b/i,
+  ],
+  choose_detailed: [
+    /\b(the )?(second|detailed|longer|elaborate|full) (one|prayer|version)\b/i,
+    /\bsecond one\b/i,
+    /\bdetailed one\b/i,
+    /\bthe detailed\b/i,
+    /\bmore detailed\b/i,
+  ],
+  combine: [
+    /\bcombine\b/i,
+    /\bmix\b/i,
+    /\bblend\b/i,
+    /\bmerge\b/i,
+    /\bboth (prayers|versions)\b/i,
+    /\bparts of (both|each)\b/i,
+    /\btake (some|parts) from\b/i,
+  ],
+  hesitation: [
+    /\bnot sure\b/i,
+    /\blet me think\b/i,
+    /\bgive me a (moment|minute|second)\b/i,
+    /\bhmm+\b/i,
+    /\bi need (a moment|to think|time)\b/i,
+    /\bcan i think\b/i,
+    /\bhold on\b/i,
+  ],
+  question: [
+    /\bwhat happens\b/i,
+    /\bhow (long|much|does|do|will)\b/i,
+    /\bwhen (will|do|does)\b/i,
+    /\bwhere (will|do|does)\b/i,
+    /\bcan you (explain|tell me)\b/i,
+    /\?$/,
+  ],
+  write_own: [
+    /\bi'?ll write\b/i,
+    /\blet me write\b/i,
+    /\bi want to write\b/i,
+    /\bmy own words\b/i,
+    /\bi'?d (like|prefer) to write\b/i,
+  ],
+};
+
+// Check if message looks like a user-written prayer
+function looksLikePrayer(message: string): boolean {
+  const prayerIndicators = [
+    /\b(blessed mother|holy mary|our lady|dear (god|lord|mary))\b/i,
+    /\bplease (pray|intercede|watch|protect|help)\b/i,
+    /\bamen\b/i,
+    /\bi (ask|pray|beg)\b/i,
+  ];
+  const matches = prayerIndicators.filter(p => p.test(message)).length;
+  return matches >= 2 || (message.toLowerCase().includes('amen') && message.length > 50);
+}
+
+export function classifyPrayerIntent(message: string, subPhase: PrayerSubPhase): PrayerIntent {
+  const trimmed = message.trim();
+
+  // If user wrote their own prayer
+  if (looksLikePrayer(trimmed)) {
+    return "write_own";
+  }
+
+  // Check each pattern category
+  for (const [intent, patterns] of Object.entries(PRAYER_INTENT_PATTERNS)) {
+    for (const pattern of patterns) {
+      if (pattern.test(trimmed)) {
+        return intent as PrayerIntent;
+      }
+    }
+  }
+
+  // Context-aware defaults for short responses
+  if (subPhase === "awaiting_confirm" || subPhase === "simple_offered" || subPhase === "detailed_offered") {
+    // Short affirmative responses in confirmation context
+    if (/^(ok|okay|sure|yep|yeah|yes|absolutely|definitely|please)\.?$/i.test(trimmed)) {
+      return "confirm";
+    }
+  }
+
+  if (subPhase === "both_offered") {
+    // If they just say "first" or "second" when choosing
+    if (/^(the )?(first|1|one)\.?$/i.test(trimmed)) return "choose_simple";
+    if (/^(the )?(second|2|two)\.?$/i.test(trimmed)) return "choose_detailed";
+  }
+
+  return "unclear";
+}
+
+// ============================================================================
+// EMAIL INTENT CLASSIFICATION
+// ============================================================================
+
+export type EmailIntent =
+  | "provide_email"  // user provides an email address
+  | "refuse"         // "I'd rather not", "no thanks", "I don't want to"
+  | "ask_why"        // "why do you need it?", "what's it for?"
+  | "later"          // "can I give it later?", "maybe after"
+  | "unclear";       // couldn't classify
+
+const EMAIL_INTENT_PATTERNS: Record<string, RegExp[]> = {
+  provide_email: [
+    /[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}/,  // email pattern
+  ],
+  refuse: [
+    /\b(no thanks?|no thank you)\b/i,
+    /\bi'?d rather not\b/i,
+    /\bi don'?t want to\b/i,
+    /\bprefer not to\b/i,
+    /\bdon'?t (want|need) to (share|give)\b/i,
+    /\bkeep.*(private|myself)\b/i,
+    /\bnot comfortable\b/i,
+    /\bskip\b/i,
+    /^no\.?$/i,
+  ],
+  ask_why: [
+    /^why\??$/i,                         // just "why" or "why?"
+    /\bwhy do you need\b/i,
+    /\bwhat('s| is) it for\b/i,
+    /\bwhy (do you )?(want|need|ask)\b/i,
+    /\bwhat (will|do) you (do|use)\b/i,
+    /\bis it (safe|secure|private)\b/i,
+    /\bis (my |your |the )?(email|data|info).*(safe|secure|private)\b/i,  // "is my email safe"
+    /\bwill you (spam|sell|share)\b/i,
+    /\bspam me\b/i,                      // "will you spam me", "are you going to spam me"
+    /\bsell my (email|data|info)\b/i,
+    /\bshare my (email|data|info)\b/i,
+    /\bprivacy\b/i,
+  ],
+  later: [
+    /\b(can i|could i) (give|provide|share) it later\b/i,
+    /\bmaybe (later|after)\b/i,
+    /\bnot (right )?now\b/i,
+    /\blater\b/i,
+    /\bafter (we|i|the)\b/i,
+    /\bfirst (let me|i want to)\b/i,
+  ],
+};
+
+export function classifyEmailIntent(message: string): EmailIntent {
+  const trimmed = message.trim();
+
+  // Check for email pattern first (highest priority)
+  if (EMAIL_INTENT_PATTERNS.provide_email[0].test(trimmed)) {
+    return "provide_email";
+  }
+
+  // Check other patterns
+  for (const [intent, patterns] of Object.entries(EMAIL_INTENT_PATTERNS)) {
+    if (intent === "provide_email") continue; // already checked
+    for (const pattern of patterns) {
+      if (pattern.test(trimmed)) {
+        return intent as EmailIntent;
+      }
+    }
+  }
+
+  return "unclear";
+}
+
+// ============================================================================
+// PAYMENT INTENT CLASSIFICATION
+// ============================================================================
+
+export type PaymentIntent =
+  | "proceed"        // "yes", "let's do it", "I'm ready"
+  | "decline"        // "no thanks", "not today", "I can't"
+  | "hesitation"     // "I'm not sure", "let me think"
+  | "price_concern"  // "too expensive", "can't afford"
+  | "trust_concern"  // "is this legit?", "how do I know?"
+  | "question"       // "what happens next?", "how does it work?"
+  | "come_back"      // "I'll come back later", "save my prayer"
+  | "select_tier"    // "$28", "the first option", "basic"
+  | "unclear";       // couldn't classify
+
+const PAYMENT_INTENT_PATTERNS: Record<string, RegExp[]> = {
+  proceed: [
+    /\b(yes|yeah|yep)\b/i,
+    /\blet'?s do (it|this)\b/i,
+    /\bi'?m ready\b/i,
+    /\bready to (pay|proceed|continue)\b/i,
+    /\bi('?ll| will) (pay|do it|proceed)\b/i,
+    /\blet'?s (go|proceed|continue)\b/i,
+    /\bsign me up\b/i,
+    /\bi want to (support|contribute|donate)\b/i,
+    /\btake my (money|payment)\b/i,
+  ],
+  decline: [
+    /\b(no thanks?|no thank you)\b/i,
+    /\bnot (today|right now|at this time)\b/i,
+    /\bi (can'?t|cannot|won'?t)\b/i,
+    /\bmaybe (not|another time)\b/i,
+    /\bi'?ll pass\b/i,
+    /\bnot interested\b/i,
+    /\bno,? (i'?m )?(good|fine|ok(ay)?)\b/i,
+  ],
+  hesitation: [
+    /\bi'?m not sure\b/i,
+    /\blet me think\b/i,
+    /\bi need (to think|a moment|time)\b/i,
+    /\bgive me (a )?(moment|minute|second)\b/i,
+    /\bhmm+\b/i,
+    /\bi don'?t know\b/i,
+    /\bmaybe\b/i,
+    /\buncertain\b/i,
+  ],
+  price_concern: [
+    /\b(too )?(expensive|pricey|costly|much)\b/i,
+    /\bcan'?t afford\b/i,
+    /\bdon'?t have (the )?(money|funds)\b/i,
+    /\b(tight|limited) budget\b/i,
+    /\bfinancial(ly)?\b/i,
+    /\bcheaper\b/i,
+    /\bdiscount\b/i,
+    /\blower (price|amount|tier)\b/i,
+    /\bstruggling\b/i,
+  ],
+  trust_concern: [
+    /\bis this (legit|legitimate|real|a scam)\b/i,
+    /\bhow do i know\b/i,
+    /\bcan i trust\b/i,
+    /\bprove (it|this)\b/i,
+    /\bscam\b/i,
+    /\bfraud\b/i,
+    /\bsuspicious\b/i,
+    /\bskeptical\b/i,
+    /\bwhere does (the )?money go\b/i,
+    /\bhow (do i know|can i be sure)\b/i,
+  ],
+  question: [
+    /\bwhat happens (next|after|then)\b/i,
+    /\bhow does (it|this) work\b/i,
+    /\bwhat (do i|will i) (get|receive)\b/i,
+    /\bwhen (will|do)\b/i,
+    /\bwhere (will|does)\b/i,
+    /\bcan you (explain|tell me)\b/i,
+    /\bwhat('?s| is) (included|the (difference|process))\b/i,
+    /\?$/,
+  ],
+  come_back: [
+    /\b(i'?ll )?(come|be) back\b/i,
+    /\bsave (my|the) prayer\b/i,
+    /\blater\b/i,
+    /\bneed (more )?time\b/i,
+    /\bthink about it\b/i,
+    /\bget back to you\b/i,
+    /\breturn\b/i,
+    /\bnot (ready )?yet\b/i,
+  ],
+  select_tier: [
+    /\$\s*28\b/i,
+    /\$\s*35\b/i,
+    /\$\s*55\b/i,
+    /\b(first|basic|simple|standard) (option|tier|level)\b/i,
+    /\b(second|middle|recommended) (option|tier|level)\b/i,
+    /\b(third|highest|premium|full) (option|tier|level)\b/i,
+    /\btwenty[- ]?eight\b/i,
+    /\bthirty[- ]?five\b/i,
+    /\bfifty[- ]?five\b/i,
+  ],
+};
+
+export function classifyPaymentIntent(message: string): PaymentIntent {
+  const trimmed = message.trim();
+
+  // Check each pattern category
+  for (const [intent, patterns] of Object.entries(PAYMENT_INTENT_PATTERNS)) {
+    for (const pattern of patterns) {
+      if (pattern.test(trimmed)) {
+        return intent as PaymentIntent;
+      }
+    }
+  }
+
+  // Context-aware: short affirmatives likely mean proceed
+  if (/^(ok|okay|sure|yes|yep|yeah|please|absolutely|definitely)\.?$/i.test(trimmed)) {
+    return "proceed";
+  }
+
+  return "unclear";
+}
+
+// ============================================================================
 // SCRIPTED RESPONSES
 // ============================================================================
 
@@ -186,7 +539,13 @@ const INAPPROPRIATE_RESPONSES = {
 // SYSTEM PROMPT
 // ============================================================================
 
-function buildSystemPrompt(context: SessionContext): string {
+interface IntentContext {
+  prayerIntent?: PrayerIntent;
+  emailIntent?: EmailIntent;
+  paymentIntent?: PaymentIntent;
+}
+
+function buildSystemPrompt(context: SessionContext, intents?: IntentContext): string {
   const basePrompt = `You are Sister Marie, a warm and pastoral guide for Messengers of Lourdes — a small ministry that carries prayer intentions to the Grotto at Lourdes, France.
 
 IMPORTANT: Messengers of Lourdes is an independent devotional service. We are NOT affiliated with the Sanctuary of Our Lady of Lourdes or any official Church body.
@@ -229,6 +588,12 @@ IMPORTANT EXCEPTION — PRAYERS: When composing a prayer, you MUST write the COM
 
 NEVER truncate or split a prayer. The word limit does NOT apply to prayers.
 
+PRAYER MODIFICATIONS: If the user asks for a shorter version, different wording, or any modification to a prayer:
+- The REVISED prayer MUST ALSO be in a SINGLE message — do NOT split it across multiple messages
+- Include a brief intro like "Here's a shorter version:" then the COMPLETE prayer in the SAME message
+- The modified prayer must still have all required elements (address, petition, situation, ask, closing with "Amen")
+- NEVER split the prayer text into multiple chat bubbles
+
 ## VOICE & TONE
 
 - Warm, unhurried, genuinely caring — like a kind woman at a parish who has time for people
@@ -262,16 +627,17 @@ When user types something that looks like an email (contains @ and .), extract i
 - User's name: ${context.userName || "unknown"}
 - User's email: ${context.userEmail || "not captured"}
 - Payment status: ${context.paymentStatus || "not started"}
+- Prayer sub-phase: ${context.prayerSubPhase || "gathering_info"}
 
 Respond ONLY with valid JSON. No text before or after the JSON.`;
 
   // Add phase-specific instructions
-  const phaseInstructions = getPhaseInstructions(context);
+  const phaseInstructions = getPhaseInstructions(context, intents);
 
   return basePrompt + "\n\n" + phaseInstructions;
 }
 
-function getPhaseInstructions(context: SessionContext): string {
+function getPhaseInstructions(context: SessionContext, intents?: IntentContext): string {
   switch (context.phase) {
     case "welcome":
       return `## PHASE: WELCOME - CAPTURE USER'S NAME
@@ -312,18 +678,39 @@ The 5 buckets are:
 - Guidance in a Difficult Season (guidance)`;
 
     case "deepening":
+      // Check if we're still in email capture mode
+      const emailNotCaptured = !context.flags.emailCaptured;
+      const hasEmailIntent = intents?.emailIntent && intents.emailIntent !== "unclear";
+
       return `## PHASE: DEEPENING
 
 The user selected: ${context.bucket}
 User's name: ${context.userName || "unknown"}
 Person being prayed for: ${context.personName || "not yet captured"}
 Email captured: ${context.flags.emailCaptured ? "yes" : "no"}
+Prayer sub-phase: ${context.prayerSubPhase || "gathering_info"}
+${intents?.prayerIntent ? `Detected prayer intent: ${intents.prayerIntent}` : ""}
+${emailNotCaptured && intents?.emailIntent ? `Detected email intent: ${intents.emailIntent}` : ""}
 
 Your role: Understand who they're praying for, then help them compose their prayer.
 
-NOTE: Email should already be captured (asked right after bucket selection). Do NOT ask for email during deepening.
+${emailNotCaptured ? `
+## EMAIL CAPTURE (NOT YET COMPLETED)
+
+The user was just asked for their email but hasn't provided it yet.
+${hasEmailIntent ? getEmailIntentInstructions(intents?.emailIntent) : "Wait for them to provide email or respond to the email request before moving to the deepening questions."}
+
+CRITICAL: If email intent is detected (ask_why, refuse, later), handle ONLY that intent in this response.
+Do NOT proceed to ask about who they're praying for until the email topic is resolved.
+` : `
+NOTE: Email has been captured. Proceed with the deepening conversation.
+`}
 
 ${getBucketGuidance(context.bucket)}
+
+## PRAYER INTENT ROUTING (only if email is captured)
+
+${context.flags.emailCaptured ? getPrayerIntentInstructions(intents?.prayerIntent, context.prayerSubPhase) : "Handle email first before moving to prayer composition."}
 
 ## CONVERSATION FLOW (follow this order):
 
@@ -359,6 +746,13 @@ ${getBucketGuidance(context.bucket)}
 - Present it: "Here's a more detailed prayer:"
 - Show the prayer
 - Then ask: "Which prayer speaks to your heart — the simple one or the detailed one?"
+
+**Step 4c: Prayer modifications — if user asks for changes**
+- If user asks for a "shorter version", "different wording", "can you change X", etc.:
+- Compose the MODIFIED prayer in ONE SINGLE message
+- Format: Brief intro + complete prayer in the SAME message
+- Example: ["Here's a shorter version:\n\nBlessed Mother, please intercede for my mother, Kim. She faces pre-diabetes. I pray for her complete healing. I ask this through your Son, Jesus Christ. Amen."]
+- CRITICAL: Do NOT split the prayer into separate messages like ["Here's a shorter version:", "Blessed Mother,", "please intercede..."]
 
 **Step 5: Confirm the prayer**
 - Once user chooses, confirm: "Beautiful. This is the prayer I'll carry to Lourdes for [Name]."
@@ -437,39 +831,33 @@ Listen deeply. Reflect their emotions back. Ask one question at a time.
 Extract person_name and relationship when shared.`;
 
     case "payment":
-      return `## PHASE: PAYMENT - HANDLE QUESTIONS & REDIRECT
+      return `## PHASE: PAYMENT - HANDLE QUESTIONS & CONCERNS
 
 The user has seen the payment options. They may ask questions or express hesitation.
 Your role: Answer their concerns warmly, then gently redirect to the payment options.
 
-COMMON SCENARIOS:
+Person being prayed for: ${context.personName || "their loved one"}
+${intents?.paymentIntent ? `Detected user intent: ${intents.paymentIntent}` : ""}
 
-1. "Is this legitimate?" / "How do I know this is real?"
-   - Reassure them: "I understand your caution. Our pilgrims physically travel to Lourdes each week. You'll receive photos of your prayer at the Grotto."
-   - Redirect: "The payment options are still there when you're ready."
+## USER INTENT ROUTING
 
-2. "Can I pay later?" / "I'm not ready"
-   - Accept gracefully: "Of course. Your prayer for [Name] is saved. Take all the time you need."
-   - Do NOT push.
+${getPaymentIntentInstructions(intents?.paymentIntent)}
 
-3. "I can't afford this" / "It's too expensive"
-   - Point to $28 tier: "The $28 option is there for exactly this situation. We're honored to include your prayer at whatever amount works for you."
-   - No guilt.
+## REFERENCE: COMMON SCENARIOS
 
-4. "What exactly happens to my prayer?"
-   - Explain: "Your prayer is printed with care, carried by our pilgrims to the Grotto at Lourdes, and placed at the petition box where millions have prayed. You'll receive photos by email."
-   - Redirect: "The options are there when you're ready."
-
-5. Any other question
-   - Answer briefly and warmly
-   - Gently redirect: "I'm here if you have more questions. The payment options are there whenever you're ready."
+1. Trust concerns → Reassure with facts (real pilgrims, photos sent)
+2. Price concerns → Point to $28 tier without guilt
+3. Need time → Accept gracefully, prayer is saved
+4. Questions → Answer briefly, redirect to options
+5. Decline → Accept immediately with blessing, no guilt
 
 TONE:
 - No pressure. No guilt. No urgency.
 - If they say no or seem hesitant, accept it immediately.
 - Trust that they'll decide in their own time.
 
-Do NOT set any ui_hints in this phase — the payment card is already showing.`;
+Do NOT set any ui_hints in this phase — the payment card is already showing.
+Do NOT mention specific dollar amounts — let the UI handle pricing.`;
 
     case "upsell":
       return `## PHASE: POST-PAYMENT / UPSELL
@@ -534,6 +922,208 @@ Capture: The situation, what clarity they seek`;
     default:
       return "";
   }
+}
+
+function getPrayerIntentInstructions(intent: PrayerIntent | undefined, subPhase: PrayerSubPhase): string {
+  if (!intent || intent === "unclear") {
+    return `No specific intent detected. Follow the conversation flow based on the current sub-phase (${subPhase}).`;
+  }
+
+  const instructions: Record<PrayerIntent, string> = {
+    confirm: `**USER INTENT: CONFIRM**
+The user is confirming the prayer. This is the green light to proceed.
+- Acknowledge warmly: "Beautiful. I'll carry this prayer to Lourdes."
+- Proceed to Step 6: Explain the process and set ui_hint to "show_petition_photo"
+- Set ready_for_payment to true
+- Do NOT ask any more questions about the prayer`,
+
+    reject: `**USER INTENT: REJECT**
+The user doesn't like the current prayer. Handle gracefully.
+- Acknowledge without defensiveness: "I hear you — let's find words that feel right."
+- Ask ONE specific question: "What doesn't feel right about it?" or "What would you like to change?"
+- Wait for their feedback before composing a new version
+- Do NOT immediately offer a new prayer without understanding what they want different`,
+
+    modify: `**USER INTENT: MODIFY**
+The user wants to change something about the prayer.
+- Listen to their specific request
+- Compose the MODIFIED prayer in ONE SINGLE message
+- Format: Brief intro ("Here's a version with that change:") + complete prayer in SAME message
+- The modified prayer MUST include: address, petition, name, situation, specific ask, and "Amen"
+- CRITICAL: Do NOT split the prayer across multiple messages
+- After showing the modified prayer, ask: "Does this feel right now?"`,
+
+    choose_simple: `**USER INTENT: CHOOSE SIMPLE PRAYER**
+The user has chosen the simple/first prayer version.
+- Confirm their choice: "The simple prayer it is."
+- Read back the simple prayer to confirm
+- Ask: "Is this the prayer you'd like me to carry to Lourdes?"
+- Wait for their final confirmation before proceeding to Step 6`,
+
+    choose_detailed: `**USER INTENT: CHOOSE DETAILED PRAYER**
+The user has chosen the detailed/second prayer version.
+- Confirm their choice: "The detailed prayer it is."
+- Read back the detailed prayer to confirm
+- Ask: "Is this the prayer you'd like me to carry to Lourdes?"
+- Wait for their final confirmation before proceeding to Step 6`,
+
+    write_own: `**USER INTENT: WRITE OWN PRAYER**
+The user has written their own prayer or wants to.
+- If they SENT a prayer: Receive it with reverence. Affirm it: "That's a beautiful prayer, straight from your heart."
+- Check if their prayer has the essential elements (address to Mary, petition, closing)
+- If complete: Ask "Is this exactly what you'd like me to carry to Lourdes?"
+- If incomplete (missing "Amen" or address): Gently offer to help complete it: "Would you like me to help shape this into a formal prayer while keeping your words?"`,
+
+    combine: `**USER INTENT: COMBINE PRAYERS**
+The user wants elements from both the simple and detailed prayers.
+- Acknowledge: "I can blend the best of both for you."
+- Ask what they liked from each: "What parts spoke to you from each version?"
+- OR if it's clear, compose a merged version that combines their preferred elements
+- Present the combined prayer in ONE SINGLE message
+- Ask: "Does this capture what you wanted?"`,
+
+    question: `**USER INTENT: QUESTION**
+The user has a question (possibly off-topic from prayer composition).
+- Answer their question briefly and warmly
+- Then gently redirect back to the prayer decision
+- Example: "Great question. [Brief answer]. Now, about your prayer — which version feels right to you?"
+- Do NOT get derailed into long explanations`,
+
+    hesitation: `**USER INTENT: HESITATION**
+The user is unsure or needs time to think.
+- Honor their pace: "Take all the time you need. This prayer is for [Name] — it should feel right."
+- Do NOT pressure or rush them
+- Offer gentle support: "Would it help if I explained the difference between the two versions?"
+- Wait for them to indicate readiness`,
+
+    unclear: `No specific intent detected. Follow the conversation flow based on context.`,
+  };
+
+  return instructions[intent] || instructions.unclear;
+}
+
+function getEmailIntentInstructions(intent: EmailIntent | undefined): string {
+  if (!intent || intent === "unclear") {
+    return `No specific email intent detected. If user's message contains an email, extract it. Otherwise, gently ask again.`;
+  }
+
+  const instructions: Record<EmailIntent, string> = {
+    provide_email: `**USER INTENT: PROVIDE EMAIL**
+The user has shared their email address.
+- Extract the email and set extracted.user_email
+- Set flags.email_captured to true
+- Thank them briefly: "Thank you."
+- Immediately move to the next step — ask about who they're praying for
+- Do NOT linger on the email topic`,
+
+    refuse: `**USER INTENT: REFUSE EMAIL**
+The user doesn't want to share their email. Handle gracefully without pressure.
+- Accept immediately: "That's perfectly fine."
+- Do NOT ask again or try to convince them
+- Do NOT guilt them or explain why you need it
+- Move forward: "Let's continue with your prayer intention."
+- Proceed to ask about who they're praying for
+- Set a note that we'll need to ask again before payment (but don't mention this to user)`,
+
+    ask_why: `**USER INTENT: ASK WHY (EMAIL)**
+The user wants to know why you need their email.
+- Answer honestly and briefly: "It's so I can send you confirmation and photos when your prayer reaches the Grotto."
+- Reassure privacy: "We never share your information with anyone."
+- Then ask again gently: "Would you feel comfortable sharing it?"
+- CRITICAL: STOP HERE. Do NOT ask any other questions in this response.
+- Do NOT proceed to ask about who they're praying for yet.
+- Wait for their response about the email before moving on.
+- If they provide email → thank them, then proceed to deepening
+- If they refuse → accept gracefully, then proceed to deepening`,
+
+    later: `**USER INTENT: PROVIDE LATER**
+The user wants to give email later.
+- Accept this: "Of course, no rush."
+- Make a mental note (but don't explicitly say you'll ask later)
+- Move forward: "Let's talk about your prayer intention."
+- Proceed to ask about who they're praying for`,
+
+    unclear: `No specific email intent detected. If the message contains an @ symbol, treat as email. Otherwise, gently clarify.`,
+  };
+
+  return instructions[intent] || instructions.unclear;
+}
+
+function getPaymentIntentInstructions(intent: PaymentIntent | undefined): string {
+  if (!intent || intent === "unclear") {
+    return `No specific payment intent detected. The payment card is visible. Answer any questions warmly and redirect to the payment options.`;
+  }
+
+  const instructions: Record<PaymentIntent, string> = {
+    proceed: `**USER INTENT: PROCEED WITH PAYMENT**
+The user is ready to pay. This is the green light.
+- Affirm their decision warmly: "Thank you for entrusting us with this sacred task."
+- The payment UI will handle the actual transaction
+- Do NOT mention specific prices
+- Express gratitude: "Your prayer for [Name] will be carried to Lourdes with reverence."`,
+
+    decline: `**USER INTENT: DECLINE PAYMENT**
+The user is not going to pay. Accept gracefully with ZERO pressure.
+- Accept immediately: "I understand completely."
+- Do NOT try to convince or guilt them
+- Do NOT ask why or offer alternatives
+- Offer hope: "Your prayer for [Name] is still in my heart."
+- Close warmly: "May God bless you. You're always welcome to return."
+- Set conversation_complete to true`,
+
+    hesitation: `**USER INTENT: HESITATION**
+The user is unsure about paying. Be gentle, not pushy.
+- Honor their pace: "Take all the time you need."
+- Do NOT pressure or create urgency
+- Offer reassurance: "There's no rush. Your prayer is waiting whenever you're ready."
+- You can mention: "The options are there when you feel comfortable."
+- Wait for them to decide on their own`,
+
+    price_concern: `**USER INTENT: PRICE CONCERN**
+The user is worried about the cost. Handle with compassion, not guilt.
+- Acknowledge: "I understand. We want everyone to be able to participate."
+- Point to the lowest tier WITHOUT making them feel bad: "The $28 option is there for exactly this reason."
+- Do NOT guilt them about the pilgrims' costs or make them feel cheap
+- If they still can't: Accept gracefully and close warmly (see decline)`,
+
+    trust_concern: `**USER INTENT: TRUST CONCERN**
+The user is skeptical about whether this is legitimate. Reassure with facts.
+- Validate: "I completely understand your caution."
+- Provide concrete reassurance:
+  • "Real pilgrims physically travel to Lourdes each week."
+  • "You'll receive photos of your prayer at the Grotto."
+  • "We've been doing this for [X years]."
+- Do NOT get defensive or act offended
+- After reassuring: "The options are there whenever you feel comfortable."`,
+
+    question: `**USER INTENT: QUESTION**
+The user has a question about the payment or process.
+- Answer briefly and clearly
+- Common answers:
+  • "What happens next?" → "Once you choose a level, your prayer will be prepared and carried to Lourdes. You'll receive photos by email."
+  • "What's the difference?" → Briefly explain tiers without pressure
+  • "When will it happen?" → "Our pilgrims visit the Grotto weekly."
+- After answering: "The options are there whenever you're ready."`,
+
+    come_back: `**USER INTENT: COME BACK LATER**
+The user wants to return later to pay. Support this gracefully.
+- Affirm: "Of course. Your prayer for [Name] is saved."
+- Reassure: "You can return anytime to complete this."
+- If we have their email: "I'll keep your prayer ready."
+- Close warmly: "Take care, and God bless you."
+- Do NOT create false urgency`,
+
+    select_tier: `**USER INTENT: SELECT TIER**
+The user is indicating which payment tier they want.
+- Acknowledge their choice warmly
+- The payment UI will handle the actual selection
+- Affirm: "Thank you for your generosity toward this mission."
+- Do NOT repeat the price back to them`,
+
+    unclear: `No specific payment intent detected. The payment card is visible. Be present and supportive without being pushy.`,
+  };
+
+  return instructions[intent] || instructions.unclear;
 }
 
 // ============================================================================
@@ -646,6 +1236,27 @@ export async function generateResponse(
     return preScreen.response;
   }
 
+  // Detect intents based on current phase
+  const intents: IntentContext = {};
+
+  if (context.phase === "deepening") {
+    intents.prayerIntent = classifyPrayerIntent(userMessage, context.prayerSubPhase || "gathering_info");
+    console.log(`=== PRAYER INTENT: ${intents.prayerIntent} (sub-phase: ${context.prayerSubPhase}) ===`);
+  }
+
+  if (context.phase === "payment") {
+    intents.paymentIntent = classifyPaymentIntent(userMessage);
+    console.log(`=== PAYMENT INTENT: ${intents.paymentIntent} ===`);
+  }
+
+  // Email intent can be detected in bucket_selection or deepening phase (when email not yet captured)
+  if (!context.flags.emailCaptured && (context.phase === "bucket_selection" || context.phase === "deepening")) {
+    intents.emailIntent = classifyEmailIntent(userMessage);
+    if (intents.emailIntent !== "unclear") {
+      console.log(`=== EMAIL INTENT: ${intents.emailIntent} ===`);
+    }
+  }
+
   // Build conversation history for Claude
   const messages = context.conversationHistory
     .slice(-15)
@@ -664,7 +1275,7 @@ export async function generateResponse(
     const response = await anthropic.messages.create({
       model: "claude-sonnet-4-20250514",
       max_tokens: 3000,
-      system: buildSystemPrompt(context),
+      system: buildSystemPrompt(context, intents),
       messages,
     });
 

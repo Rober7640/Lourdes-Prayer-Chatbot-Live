@@ -3,6 +3,7 @@ import type {
   SessionContext,
   ConversationPhase,
   BucketType,
+  PrayerSubPhase,
 } from "./claude";
 
 // ============================================================================
@@ -31,6 +32,7 @@ export function createSession(): SessionContext {
     relationship: null,
     situationDetail: null,
     paymentStatus: null,
+    prayerSubPhase: "gathering_info",
     flags: {
       userNameCaptured: false,
       nameCaptured: false,
@@ -169,7 +171,21 @@ export function setReadyForPayment(sessionId: string): SessionContext | null {
 
   session.flags.readyForPayment = true;
   session.phase = "payment";
+  session.prayerSubPhase = "confirmed";
   sessions.set(sessionId, session);
+  return session;
+}
+
+export function setPrayerSubPhase(
+  sessionId: string,
+  subPhase: PrayerSubPhase
+): SessionContext | null {
+  const session = sessions.get(sessionId);
+  if (!session) return null;
+
+  session.prayerSubPhase = subPhase;
+  sessions.set(sessionId, session);
+  console.log(`=== PRAYER SUB-PHASE UPDATED: ${subPhase} ===`);
   return session;
 }
 
