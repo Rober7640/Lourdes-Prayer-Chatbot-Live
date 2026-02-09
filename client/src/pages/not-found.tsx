@@ -22,8 +22,8 @@ export default function NotFound() {
                 data-testid="text-subtitle"
               >
                 You’re seeing this placeholder screen while we hook up the main pages.
-                The theme is active (Sky &amp; Sanctuary) — next up is the Sister Marie
-                intro and “Talk to Sister Marie” flow.
+                The theme is active (Sky &amp; Sanctuary) — next up is the Messenger Marie
+                intro and “Talk to Messenger Marie” flow.
               </p>
             </div>
           </div>

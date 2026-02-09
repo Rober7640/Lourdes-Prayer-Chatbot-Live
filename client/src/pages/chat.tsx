@@ -66,11 +66,11 @@ function AvatarSm() {
   return (
     <div
       className="h-10 w-10 flex-shrink-0 overflow-hidden rounded-full border border-card-border bg-white/70 shadow-sm"
-      aria-label="Sister Marie"
+      aria-label="Messenger Marie"
     >
       <img
         src={sisterMariePortrait}
-        alt="Sister Marie"
+        alt="Messenger Marie"
         className="h-full w-full object-cover"
       />
     </div>
@@ -405,7 +405,7 @@ export default function ChatPage() {
         await renderMessages(data.messages, data.uiHint);
       } catch (err) {
         console.error("Failed to start chat:", err);
-        setError("Unable to connect to Sister Marie. Please try again.");
+        setError("Unable to connect to Messenger Marie. Please try again.");
         setIsLoading(false);
       }
     }
@@ -630,7 +630,7 @@ export default function ChatPage() {
 
             <div className="flex items-center gap-2">
               <img src={grottoMark} alt="" className="h-6 w-6" />
-              <div className="text-sm font-semibold">Sister Marie</div>
+              <div className="text-sm font-semibold">Messenger Marie</div>
             </div>
 
             <div className="h-8 w-16" aria-hidden="true" />

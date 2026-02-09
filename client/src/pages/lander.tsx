@@ -71,7 +71,7 @@ function StatusPill({ status }: { status: StatusState }) {
         className="text-sm font-medium text-foreground"
         data-testid="text-status"
       >
-        {isBusy ? "With a pilgrim" : "Available now"}
+        {isBusy ? "With someone" : "Available now"}
       </span>
     </div>
   );
@@ -82,11 +82,11 @@ function SisterMarieAvatar() {
     <div
       className="relative mx-auto h-24 w-24 overflow-hidden rounded-2xl border border-card-border bg-white/70 shadow-md"
       data-testid="img-sister-marie"
-      aria-label="Sister Marie"
+      aria-label="Messenger Marie"
     >
       <img
         src={sisterMariePortrait}
-        alt="Sister Marie"
+        alt="Messenger Marie"
         className="h-full w-full object-cover"
         data-testid="img-sister-marie-photo"
       />
@@ -108,13 +108,9 @@ function SpeechCard() {
           data-testid="text-intro-quote"
         >
           <span className="font-serif text-[15px]">
-            “My name is Sister Marie. I’m with a small group of pilgrims who travel to
-            the Grotto…”
+            “My name is Messenger Marie. I'm with Messengers of Lourdes…”
           </span>
-          <span className="mt-2 block text-xs text-muted-foreground" data-testid="text-voice-note">
-            Her voice, her words
-          </span>
-        </p>
+                  </p>
       </div>
     </div>
   );
@@ -126,7 +122,7 @@ function HowItWorks() {
       {
         n: "①",
         title: "Share your intention",
-        body: "Tell Sister Marie who you’re praying for.",
+        body: "Tell Messenger Marie who you're praying for.",
       },
       {
         n: "②",
@@ -230,7 +226,7 @@ function Footer() {
   return (
     <footer className="mx-auto mt-12 w-full max-w-2xl pb-10" data-testid="footer">
       <div className="text-center text-xs leading-relaxed text-muted-foreground" data-testid="text-footer-disclaimer">
-        Messengers at Lourdes is independent. Not affiliated with the Sanctuary.
+        Messengers of Lourdes is independent. Not affiliated with the Sanctuary.
       </div>
       <div className="mt-3 flex items-center justify-center gap-4 text-xs text-muted-foreground">
         <a href="#" className="hover:underline" data-testid="link-privacy">
@@ -278,7 +274,7 @@ export default function LanderPage() {
                 className="text-[11px] font-semibold uppercase tracking-[0.24em] text-muted-foreground"
                 data-testid="text-brand"
               >
-                Messengers at Lourdes
+                Messengers of Lourdes
               </div>
             </div>
           </div>
@@ -314,7 +310,7 @@ export default function LanderPage() {
                   ].join(" ")}
                   data-testid="button-talk-to-sister-marie"
                 >
-                  Talk to Sister Marie
+                  Talk to Messenger Marie
                   <ArrowRight className="h-4 w-4" />
                 </Button>
               </Link>
@@ -372,7 +368,7 @@ export default function LanderPage() {
               Your prayer deserves to be at Lourdes.
             </div>
             <div className="mt-2 text-sm text-muted-foreground" data-testid="text-final-cta-subtitle">
-              Sister Marie is ready to listen.
+              Messenger Marie is ready to listen.
             </div>
 
             <div className="mt-5 flex justify-center">
@@ -386,7 +382,7 @@ export default function LanderPage() {
                 ].join(" ")}
                 data-testid="button-talk-to-sister-marie-bottom"
               >
-                Talk to Sister Marie
+                Talk to Messenger Marie
                 <ArrowRight className="h-4 w-4" />
               </Button>
             </div>

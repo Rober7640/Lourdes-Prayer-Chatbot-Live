@@ -2,14 +2,16 @@ import { drizzle } from "drizzle-orm/postgres-js";
 import postgres from "postgres";
 import * as schema from "@shared/schema";
 
-if (!process.env.DATABASE_URL) {
-  throw new Error("DATABASE_URL environment variable is not set");
+// Database is optional - only initialize if DATABASE_URL is set
+let db: ReturnType<typeof drizzle<typeof schema>> | null = null;
+
+if (process.env.DATABASE_URL) {
+  const client = postgres(process.env.DATABASE_URL);
+  db = drizzle(client, { schema });
+  console.log("Database connection established");
+} else {
+  console.log("DATABASE_URL not set - running without database persistence");
 }
 
-// Create postgres connection
-const client = postgres(process.env.DATABASE_URL);
-
-// Create drizzle instance with schema
-export const db = drizzle(client, { schema });
-
+export { db };
 export type DB = typeof db;

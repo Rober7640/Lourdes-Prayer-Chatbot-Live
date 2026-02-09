@@ -27,6 +27,22 @@ import {
   setCrisisFlag,
   savePrayerIntention,
 } from "./services/session";
+import {
+  createUpsellSession,
+  getUpsellSession,
+  getUpsellSessionByOriginalId,
+  addToUpsellHistory,
+  addUpsellAssistantMessages,
+  setPurchaseType,
+  setUpsellPhase,
+} from "./services/upsell-session";
+import {
+  getInitialUpsellMessages,
+  handleUpsellAction,
+  advanceUpsellPhase,
+  handleUpsellMessage,
+  type UpsellAction,
+} from "./services/claude-upsell";
 
 // ============================================================================
 // HELPER FUNCTIONS FOR PRAYER EXTRACTION
@@ -395,9 +411,10 @@ export async function registerRoutes(
 
       const personName = session.personName || "your loved one";
       const paymentTransitionMessages = [
-        `${personName}'s prayer will be written by hand on blessed parchment.`,
-        "Each week, our pilgrims walk to the sacred Grotto at Lourdes, France — the very place where Our Lady appeared to Saint Bernadette.",
+        `${personName}'s prayer will be carefully printed and prepared for the journey.`,
+        "Each week, our messengers walk to the sacred Grotto at Lourdes, France — the very place where Our Lady appeared to Saint Bernadette.",
         "Your prayer will be placed in the waters of the spring, where countless miracles have been recorded.",
+        "You'll receive a photo of your prayer at the Grotto within 7 days.",
         "We ask only a small offering to help cover the pilgrimage and materials.",
       ];
 
@@ -411,6 +428,288 @@ export async function registerRoutes(
     } catch (error) {
       console.error("Error transitioning to payment:", error);
       res.status(500).json({ error: "Failed to transition to payment" });
+    }
+  });
+
+  // ========================================================================
+  // UPSELL API ENDPOINTS
+  // ========================================================================
+
+  /**
+   * GET /api/confirmation/:sessionId
+   * Load confirmation/upsell page data
+   * Creates upsell session if doesn't exist
+   */
+  app.get("/api/confirmation/:sessionId", async (req, res) => {
+    try {
+      const { sessionId } = req.params;
+
+      // Get the original prayer session
+      const originalSession = getSession(sessionId);
+      if (!originalSession) {
+        return res.status(404).json({ error: "Session not found" });
+      }
+
+      // Check if upsell session already exists
+      let upsellSession = getUpsellSessionByOriginalId(sessionId);
+
+      if (!upsellSession) {
+        // Create new upsell session with data from original session
+        upsellSession = createUpsellSession({
+          sessionId,
+          userName: originalSession.userName,
+          userEmail: originalSession.userEmail,
+          personName: originalSession.personName,
+          relationship: originalSession.relationship,
+          situation: originalSession.situationDetail,
+          bucket: originalSession.bucket,
+        });
+      }
+
+      // Get initial messages
+      const response = getInitialUpsellMessages(upsellSession);
+
+      // Add to history
+      addUpsellAssistantMessages(upsellSession.upsellSessionId, response.messages);
+
+      res.json({
+        upsellSessionId: upsellSession.upsellSessionId,
+        sessionId: upsellSession.sessionId,
+        messages: response.messages,
+        image: response.image,
+        imageAfterMessage: response.imageAfterMessage,
+        uiHint: response.uiHint,
+        phase: response.phase,
+        flags: response.flags,
+        // Context for UI
+        userName: upsellSession.userName,
+        personName: upsellSession.personName,
+        prayingFor: upsellSession.flags.prayingFor,
+        situation: upsellSession.situation,
+        userEmail: upsellSession.userEmail,
+      });
+    } catch (error) {
+      console.error("Error loading confirmation:", error);
+      res.status(500).json({ error: "Failed to load confirmation page" });
+    }
+  });
+
+  /**
+   * POST /api/upsell/action
+   * Handle button clicks in upsell flow
+   */
+  app.post("/api/upsell/action", async (req, res) => {
+    try {
+      const { upsellSessionId, action } = req.body;
+
+      if (!upsellSessionId || !action) {
+        return res.status(400).json({ error: "Missing upsellSessionId or action" });
+      }
+
+      const session = getUpsellSession(upsellSessionId);
+      if (!session) {
+        return res.status(404).json({ error: "Upsell session not found" });
+      }
+
+      // Validate action
+      const validActions: UpsellAction[] = [
+        "continue",
+        "go",
+        "accept_medal",
+        "decline_medal",
+        "tell_me_more",
+        "accept_candle",
+        "decline_candle",
+      ];
+
+      if (!validActions.includes(action)) {
+        return res.status(400).json({ error: "Invalid action" });
+      }
+
+      // Add user action to history
+      addToUpsellHistory(upsellSessionId, "user", `[Action: ${action}]`);
+
+      // Handle the action
+      const response = handleUpsellAction(session, action as UpsellAction);
+
+      // Add response to history
+      addUpsellAssistantMessages(upsellSessionId, response.messages);
+
+      res.json({
+        messages: response.messages,
+        image: response.image,
+        imageAfterMessage: response.imageAfterMessage,
+        uiHint: response.uiHint,
+        phase: response.phase,
+        flags: response.flags,
+      });
+    } catch (error) {
+      console.error("Error handling upsell action:", error);
+      res.status(500).json({ error: "Failed to process action" });
+    }
+  });
+
+  /**
+   * POST /api/upsell/advance
+   * Auto-advance to next phase after messages are shown
+   */
+  app.post("/api/upsell/advance", async (req, res) => {
+    try {
+      const { upsellSessionId } = req.body;
+
+      if (!upsellSessionId) {
+        return res.status(400).json({ error: "Missing upsellSessionId" });
+      }
+
+      const session = getUpsellSession(upsellSessionId);
+      if (!session) {
+        return res.status(404).json({ error: "Upsell session not found" });
+      }
+
+      // Advance to next phase
+      const response = advanceUpsellPhase(session);
+
+      // Add response to history if there are messages
+      if (response.messages.length > 0) {
+        addUpsellAssistantMessages(upsellSessionId, response.messages);
+      }
+
+      res.json({
+        messages: response.messages,
+        image: response.image,
+        imageAfterMessage: response.imageAfterMessage,
+        uiHint: response.uiHint,
+        phase: response.phase,
+        flags: response.flags,
+      });
+    } catch (error) {
+      console.error("Error advancing upsell phase:", error);
+      res.status(500).json({ error: "Failed to advance phase" });
+    }
+  });
+
+  /**
+   * POST /api/upsell/message
+   * Handle free-form messages in upsell (rare case)
+   */
+  app.post("/api/upsell/message", async (req, res) => {
+    try {
+      const { upsellSessionId, message } = req.body;
+
+      if (!upsellSessionId || !message) {
+        return res.status(400).json({ error: "Missing upsellSessionId or message" });
+      }
+
+      const session = getUpsellSession(upsellSessionId);
+      if (!session) {
+        return res.status(404).json({ error: "Upsell session not found" });
+      }
+
+      // Add user message to history
+      addToUpsellHistory(upsellSessionId, "user", message);
+
+      // Handle message with Claude
+      const response = await handleUpsellMessage(session, message);
+
+      // Add response to history
+      addUpsellAssistantMessages(upsellSessionId, response.messages);
+
+      res.json({
+        messages: response.messages,
+        image: response.image,
+        imageAfterMessage: response.imageAfterMessage,
+        uiHint: response.uiHint,
+        phase: response.phase,
+        flags: response.flags,
+      });
+    } catch (error) {
+      console.error("Error handling upsell message:", error);
+      res.status(500).json({ error: "Failed to process message" });
+    }
+  });
+
+  /**
+   * POST /api/upsell/medal
+   * Process medal purchase with shipping address
+   */
+  app.post("/api/upsell/medal", async (req, res) => {
+    try {
+      const { upsellSessionId, shipping } = req.body;
+
+      if (!upsellSessionId || !shipping) {
+        return res.status(400).json({ error: "Missing upsellSessionId or shipping" });
+      }
+
+      const session = getUpsellSession(upsellSessionId);
+      if (!session) {
+        return res.status(404).json({ error: "Upsell session not found" });
+      }
+
+      // Validate shipping fields
+      const requiredFields = ["name", "address1", "city", "postal", "country"];
+      for (const field of requiredFields) {
+        if (!shipping[field]) {
+          return res.status(400).json({ error: `Missing shipping ${field}` });
+        }
+      }
+
+      // TODO: Create Stripe checkout session for $79 medal
+      // For now, return success with placeholder
+      console.log("Medal order received:", {
+        upsellSessionId,
+        shipping,
+        amount: 7900, // $79 in cents
+      });
+
+      // Set purchase type and phase
+      setPurchaseType(upsellSessionId, "medal");
+      setUpsellPhase(upsellSessionId, "complete");
+
+      res.json({
+        success: true,
+        message: "Medal order received",
+        uiHint: "show_thank_you_medal",
+        phase: "complete",
+        // In production: stripeSessionUrl for redirect
+      });
+    } catch (error) {
+      console.error("Error processing medal order:", error);
+      res.status(500).json({ error: "Failed to process medal order" });
+    }
+  });
+
+  /**
+   * POST /api/upsell/candle
+   * Process candle purchase (no shipping needed)
+   */
+  app.post("/api/upsell/candle", async (req, res) => {
+    try {
+      const { upsellSessionId } = req.body;
+
+      if (!upsellSessionId) {
+        return res.status(400).json({ error: "Missing upsellSessionId" });
+      }
+
+      const session = getUpsellSession(upsellSessionId);
+      if (!session) {
+        return res.status(404).json({ error: "Upsell session not found" });
+      }
+
+      // TODO: Create Stripe checkout session for $19 candle
+      // For now, return success with placeholder
+      console.log("Candle order received:", {
+        upsellSessionId,
+        amount: 1900, // $19 in cents
+      });
+
+      res.json({
+        success: true,
+        message: "Candle order received",
+        // In production: stripeSessionUrl for redirect
+      });
+    } catch (error) {
+      console.error("Error processing candle order:", error);
+      res.status(500).json({ error: "Failed to process candle order" });
     }
   });
 

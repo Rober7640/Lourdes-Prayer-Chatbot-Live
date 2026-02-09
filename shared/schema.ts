@@ -119,3 +119,89 @@ export const insertPaymentSchema = createInsertSchema(payments).omit({
 
 export type InsertPayment = z.infer<typeof insertPaymentSchema>;
 export type Payment = typeof payments.$inferSelect;
+
+// ============================================================================
+// UPSELL SESSIONS - Post-purchase upsell conversation state
+// ============================================================================
+
+export const upsellSessions = pgTable("upsell_sessions", {
+  id: uuid("id").primaryKey().default(sql`gen_random_uuid()`),
+  sessionId: uuid("session_id").references(() => sessions.id).notNull(),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+  phase: varchar("phase", { length: 50 }).default("transition").notNull(),
+  prayingFor: varchar("praying_for", { length: 20 }).default("other").notNull(), // "self" | "other" | "both"
+  personName: varchar("person_name", { length: 100 }),
+  userName: varchar("user_name", { length: 100 }),
+  userEmail: varchar("user_email", { length: 255 }),
+  userEngaged: integer("user_engaged").default(0), // 0 = false, 1 = true
+  offerShown: integer("offer_shown").default(0),
+  userAccepted: integer("user_accepted").default(0),
+  userDeclined: integer("user_declined").default(0),
+  downsellShown: integer("downsell_shown").default(0),
+  status: varchar("status", { length: 20 }).default("active").notNull(),
+});
+
+export const insertUpsellSessionSchema = createInsertSchema(upsellSessions).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+});
+
+export type InsertUpsellSession = z.infer<typeof insertUpsellSessionSchema>;
+export type UpsellSession = typeof upsellSessions.$inferSelect;
+
+// ============================================================================
+// UPSELL ORDERS - Medal and candle purchases
+// ============================================================================
+
+export const upsellOrders = pgTable("upsell_orders", {
+  id: serial("id").primaryKey(),
+  upsellSessionId: uuid("upsell_session_id").references(() => upsellSessions.id).notNull(),
+  sessionId: uuid("session_id").references(() => sessions.id).notNull(),
+  productType: varchar("product_type", { length: 20 }).notNull(), // "medal" | "candle"
+  amountCents: integer("amount_cents").notNull(),
+  stripeSessionId: varchar("stripe_session_id", { length: 255 }),
+  stripePaymentId: varchar("stripe_payment_id", { length: 255 }),
+  status: varchar("status", { length: 20 }).default("pending").notNull(),
+  // Shipping address (for medal orders)
+  shippingName: varchar("shipping_name", { length: 200 }),
+  shippingAddress1: varchar("shipping_address_1", { length: 255 }),
+  shippingAddress2: varchar("shipping_address_2", { length: 255 }),
+  shippingCity: varchar("shipping_city", { length: 100 }),
+  shippingState: varchar("shipping_state", { length: 100 }),
+  shippingPostal: varchar("shipping_postal", { length: 20 }),
+  shippingCountry: varchar("shipping_country", { length: 100 }),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  completedAt: timestamp("completed_at"),
+});
+
+export const insertUpsellOrderSchema = createInsertSchema(upsellOrders).omit({
+  id: true,
+  createdAt: true,
+  completedAt: true,
+});
+
+export type InsertUpsellOrder = z.infer<typeof insertUpsellOrderSchema>;
+export type UpsellOrder = typeof upsellOrders.$inferSelect;
+
+// ============================================================================
+// UPSELL MESSAGES - Conversation history for upsell flow
+// ============================================================================
+
+export const upsellMessages = pgTable("upsell_messages", {
+  id: serial("id").primaryKey(),
+  upsellSessionId: uuid("upsell_session_id").references(() => upsellSessions.id).notNull(),
+  role: varchar("role", { length: 10 }).notNull(), // 'user' or 'assistant'
+  content: text("content").notNull(),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  phase: varchar("phase", { length: 50 }),
+});
+
+export const insertUpsellMessageSchema = createInsertSchema(upsellMessages).omit({
+  id: true,
+  createdAt: true,
+});
+
+export type InsertUpsellMessage = z.infer<typeof insertUpsellMessageSchema>;
+export type UpsellMessage = typeof upsellMessages.$inferSelect;

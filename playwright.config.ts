@@ -2,9 +2,9 @@ import { defineConfig } from '@playwright/test';
 
 export default defineConfig({
   testDir: './tests',
-  timeout: 120000, // 2 minutes per test (AI responses can be slow)
+  timeout: 180000, // 3 minutes per test (upsell flow has many messages)
   expect: {
-    timeout: 30000, // 30 seconds for assertions
+    timeout: 60000, // 60 seconds for assertions
   },
   fullyParallel: false, // Run sequentially to avoid overwhelming the server
   retries: 0,
@@ -24,8 +24,14 @@ export default defineConfig({
       name: 'chromium',
       use: {
         browserName: 'chromium',
-        headless: false, // Set to true for CI
+        headless: true, // Run headless for faster tests
       },
     },
   ],
+  webServer: {
+    command: 'npm run dev',
+    url: 'http://localhost:5000',
+    reuseExistingServer: true,
+    timeout: 30000,
+  },
 });
