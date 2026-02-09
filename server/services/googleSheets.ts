@@ -53,6 +53,11 @@ async function getSheetsClient(): Promise<sheets_v4.Sheets> {
     } catch {
       credentials = JSON.parse(credentialsJson.replace(/\n/g, "\\n"));
     }
+    // Ensure private_key has actual newlines — env vars often store them as
+    // literal "\n" text which OpenSSL cannot parse as a PEM key.
+    if (credentials.private_key) {
+      credentials.private_key = credentials.private_key.replace(/\\n/g, "\n");
+    }
     auth = new google.auth.GoogleAuth({
       credentials,
       scopes: ["https://www.googleapis.com/auth/spreadsheets"],
