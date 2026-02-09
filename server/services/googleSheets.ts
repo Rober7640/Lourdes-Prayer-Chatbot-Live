@@ -22,8 +22,12 @@ function getCredentialsPath(): string | undefined {
   return process.env.GOOGLE_SHEETS_CREDENTIALS_PATH;
 }
 
+function getCredentialsJson(): string | undefined {
+  return process.env.GOOGLE_SHEETS_CREDENTIALS_JSON;
+}
+
 export function isGoogleSheetsEnabled(): boolean {
-  return !!getSpreadsheetId() && !!getCredentialsPath();
+  return !!getSpreadsheetId() && !!(getCredentialsPath() || getCredentialsJson());
 }
 
 // Lazy-initialized Google Sheets API client
@@ -34,19 +38,30 @@ async function getSheetsClient(): Promise<sheets_v4.Sheets> {
     return sheetsClient;
   }
 
+  const credentialsJson = getCredentialsJson();
   const credentialsPath = getCredentialsPath();
-  if (!credentialsPath) {
-    throw new Error("Google Sheets credentials path not configured");
+
+  let auth: InstanceType<typeof google.auth.GoogleAuth>;
+
+  if (credentialsJson) {
+    // Railway / cloud: credentials passed as JSON string in env var
+    const credentials = JSON.parse(credentialsJson);
+    auth = new google.auth.GoogleAuth({
+      credentials,
+      scopes: ["https://www.googleapis.com/auth/spreadsheets"],
+    });
+  } else if (credentialsPath) {
+    // Local dev: credentials file on disk
+    const absolutePath = path.isAbsolute(credentialsPath)
+      ? credentialsPath
+      : path.resolve(process.cwd(), credentialsPath);
+    auth = new google.auth.GoogleAuth({
+      keyFile: absolutePath,
+      scopes: ["https://www.googleapis.com/auth/spreadsheets"],
+    });
+  } else {
+    throw new Error("Google Sheets credentials not configured");
   }
-
-  const absolutePath = path.isAbsolute(credentialsPath)
-    ? credentialsPath
-    : path.resolve(process.cwd(), credentialsPath);
-
-  const auth = new google.auth.GoogleAuth({
-    keyFile: absolutePath,
-    scopes: ["https://www.googleapis.com/auth/spreadsheets"],
-  });
 
   sheetsClient = google.sheets({ version: "v4", auth });
   return sheetsClient;
