@@ -35,6 +35,16 @@ export const sessions = pgTable("sessions", {
   phase: varchar("phase", { length: 50 }).default("welcome").notNull(),
   status: varchar("status", { length: 20 }).default("active").notNull(),
   paymentStatus: varchar("payment_status", { length: 20 }),
+  // Stripe customer ID for one-click upsells
+  stripeCustomerId: varchar("stripe_customer_id", { length: 255 }),
+  // Shipping address for physical products (medal)
+  shippingName: varchar("shipping_name", { length: 255 }),
+  shippingAddressLine1: varchar("shipping_address_line1", { length: 255 }),
+  shippingAddressLine2: varchar("shipping_address_line2", { length: 255 }),
+  shippingCity: varchar("shipping_city", { length: 100 }),
+  shippingState: varchar("shipping_state", { length: 100 }),
+  shippingPostalCode: varchar("shipping_postal_code", { length: 20 }),
+  shippingCountry: varchar("shipping_country", { length: 100 }),
 });
 
 export const insertSessionSchema = createInsertSchema(sessions).omit({
@@ -114,7 +124,6 @@ export const payments = pgTable("payments", {
 export const insertPaymentSchema = createInsertSchema(payments).omit({
   id: true,
   createdAt: true,
-  completedAt: true,
 });
 
 export type InsertPayment = z.infer<typeof insertPaymentSchema>;

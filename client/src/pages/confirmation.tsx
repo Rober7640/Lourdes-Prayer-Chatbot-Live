@@ -13,6 +13,10 @@ import {
   calculatePauseBetweenMessages,
   calculateThinkingDelay,
 } from "@/lib/typing";
+import {
+  trackPurchase,
+  TIER_AMOUNTS,
+} from "@/lib/fbTracking";
 
 // Import upsell components
 import UpsellImage from "@/components/upsell/UpsellImage";
@@ -335,6 +339,33 @@ export default function ConfirmationPage() {
 
       try {
         setIsLoading(true);
+
+        // Verify checkout session if arriving from Stripe redirect
+        const urlParams = new URLSearchParams(window.location.search);
+        const checkoutSessionId = urlParams.get("checkout_session");
+        if (checkoutSessionId) {
+          try {
+            const verifyRes = await fetch("/api/payment/verify-checkout", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ sessionId, checkoutSessionId }),
+            });
+            const verifyData = await verifyRes.json();
+            // Fire client-side Purchase pixel event
+            if (verifyData.paymentIntentId) {
+              const amount = TIER_AMOUNTS[verifyData.tier] || 35;
+              trackPurchase(verifyData.paymentIntentId, amount, "prayer_petition");
+            }
+          } catch (err) {
+            console.error("Failed to verify checkout:", err);
+          }
+        }
+
+        // Clean query params from URL (checkout_session, upsell, etc.)
+        if (window.location.search) {
+          window.history.replaceState({}, "", `/confirmation/${sessionId}`);
+        }
+
         const res = await fetch(`/api/confirmation/${sessionId}`);
 
         if (!res.ok) {
@@ -392,6 +423,12 @@ export default function ConfirmationPage() {
       setFlags(data.flags);
       setShowThinkingDots(false);
 
+      // For candle acceptance, process payment before showing thank-you
+      if (action === "accept_candle") {
+        await processCandlePayment();
+        return;
+      }
+
       await renderMessages(data.messages, data.image, data.uiHint, data.imageAfterMessage);
 
       // Auto-advance if uiHint is "none" and not at terminal phase
@@ -403,6 +440,52 @@ export default function ConfirmationPage() {
       setShowThinkingDots(false);
       await renderMessages(
         ["I apologize — something went wrong. Please try again."],
+        null,
+        "none",
+        undefined
+      );
+    }
+  }
+
+  // Process candle payment via one-click or checkout fallback
+  async function processCandlePayment() {
+    if (!upsellSessionId) return;
+
+    try {
+      setShowThinkingDots(true);
+      const res = await fetch("/api/upsell/candle", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ upsellSessionId }),
+      });
+
+      if (!res.ok) {
+        throw new Error("Failed to process candle payment");
+      }
+
+      const data = await res.json();
+      setShowThinkingDots(false);
+
+      // If one-click failed and checkout is required, redirect to Stripe
+      if (data.requiresCheckout && data.checkoutUrl) {
+        window.location.href = data.checkoutUrl;
+        return;
+      }
+
+      // One-click success — show thank you card
+      if (data.uiHint === "show_thank_you_candle") {
+        setItems((prev) => [
+          ...prev,
+          { id: uid("sm"), role: "sm", kind: "thank_you", variant: "candle" as ThankYouVariant },
+        ]);
+      }
+
+      setPhase("complete");
+    } catch (err) {
+      console.error("Candle payment error:", err);
+      setShowThinkingDots(false);
+      await renderMessages(
+        ["I apologize — there was a problem processing your order. Please try again."],
         null,
         "none",
         undefined
@@ -463,10 +546,15 @@ export default function ConfirmationPage() {
 
       const data = await res.json();
 
-      // Remove shipping form and show thank you card
+      // If one-click failed and checkout is required, redirect to Stripe
+      if (data.requiresCheckout && data.checkoutUrl) {
+        window.location.href = data.checkoutUrl;
+        return;
+      }
+
+      // One-click success — remove shipping form and show thank you card
       setItems((prev) => prev.filter((i) => i.kind !== "shipping_form"));
 
-      // Show the thank you card
       if (data.uiHint === "show_thank_you_medal") {
         setItems((prev) => [
           ...prev,

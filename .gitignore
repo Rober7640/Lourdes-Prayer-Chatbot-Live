@@ -6,3 +6,9 @@ vite.config.ts.*
 *.tar.gz
 .env
 .env.local
+google-credentials.json
+migrate-data.ts
+.claude/
+nul
+nul_
+Untitled

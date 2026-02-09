@@ -13,6 +13,15 @@ import {
   calculatePauseBetweenMessages,
   calculateThinkingDelay,
 } from "@/lib/typing";
+import {
+  generateFbEventId,
+  trackLead,
+  trackInitiateCheckout,
+  trackPurchase,
+  getFbFields,
+  TIER_AMOUNTS,
+  UPSELL_AMOUNTS,
+} from "@/lib/fbTracking";
 
 // ============================================================================
 // TYPES
@@ -48,7 +57,11 @@ type ChatItem =
   | { id: string; role: "sm"; kind: "buckets" }
   | { id: string; role: "sm"; kind: "email" }
   | { id: string; role: "sm"; kind: "image"; src: string; alt: string; caption?: string }
-  | { id: string; role: "sm"; kind: "payment" };
+  | { id: string; role: "sm"; kind: "payment" }
+  | { id: string; role: "sm"; kind: "upsell_medal" }
+  | { id: string; role: "sm"; kind: "upsell_candle" }
+  | { id: string; role: "sm"; kind: "shipping_form" }
+  | { id: string; role: "sm"; kind: "thank_you" };
 
 // ============================================================================
 // HELPERS
@@ -142,6 +155,22 @@ export default function ChatPage() {
   const [isSubmittingEmail, setIsSubmittingEmail] = useState(false);
   const [personName, setPersonName] = useState<string | null>(null);
   const [softClosed, setSoftClosed] = useState(false);
+  const [isProcessingPayment, setIsProcessingPayment] = useState(false);
+  const [paymentCompleted, setPaymentCompleted] = useState(false);
+  const [upsellMedalShown, setUpsellMedalShown] = useState(false);
+  const [upsellCandleShown, setUpsellCandleShown] = useState(false);
+  const [showShippingForm, setShowShippingForm] = useState(false);
+  const [isSubmittingShipping, setIsSubmittingShipping] = useState(false);
+  const [lastPaymentIntentId, setLastPaymentIntentId] = useState<string | null>(null);
+  const [shippingForm, setShippingForm] = useState({
+    name: "",
+    addressLine1: "",
+    addressLine2: "",
+    city: "",
+    state: "",
+    postalCode: "",
+    country: "US",
+  });
 
   // Ref to track if component is mounted (for async operations)
   const isMountedRef = useRef(true);
@@ -387,6 +416,17 @@ export default function ChatPage() {
 
   // Initialize chat session
   useEffect(() => {
+    // Check if we're returning from payment or resuming a session
+    const params = new URLSearchParams(window.location.search);
+    const sessionParam = params.get("session");
+    const paymentStatus = params.get("payment");
+    const returningParam = params.get("returning");
+
+    // Don't start a new chat if we have session params (handled by separate useEffect)
+    if (sessionParam && (paymentStatus || returningParam)) {
+      return;
+    }
+
     async function startChat() {
       try {
         setIsLoading(true);
@@ -486,7 +526,7 @@ export default function ChatPage() {
       const res = await fetch("/api/chat/email", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ sessionId, email }),
+        body: JSON.stringify({ sessionId, email, ...getFbFields() }),
       });
 
       if (!res.ok) {
@@ -558,6 +598,12 @@ export default function ChatPage() {
       // Render response messages
       await renderMessages(data.messages, data.uiHint);
 
+      // Fire Lead pixel event when prayer is confirmed (readyForPayment means prayer was saved)
+      if (data.flags?.readyForPayment) {
+        const leadEventId = generateFbEventId();
+        trackLead(leadEventId);
+      }
+
       // If ready for payment but no photo/payment hint, use legacy transition
       // (This should rarely happen now that Claude handles the flow)
       if (data.flags?.readyForPayment && data.uiHint !== "show_payment" && data.uiHint !== "show_petition_photo") {
@@ -599,6 +645,317 @@ export default function ChatPage() {
       console.error("Payment transition error:", err);
     }
   }
+
+  // Handle payment tier selection
+  async function handlePaymentTierSelect(tier: "hardship" | "full" | "generous") {
+    if (!sessionId || isProcessingPayment) return;
+
+    setIsProcessingPayment(true);
+
+    const fbEventId = generateFbEventId();
+    trackInitiateCheckout(fbEventId, tier, TIER_AMOUNTS[tier] || 35);
+
+    try {
+      const res = await fetch("/api/payment/create-checkout", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ sessionId, tier, ...getFbFields(fbEventId) }),
+      });
+
+      if (!res.ok) {
+        const errorData = await res.json();
+        throw new Error(errorData.error || "Failed to create checkout");
+      }
+
+      const data = await res.json();
+
+      // Redirect to Stripe checkout
+      window.location.href = data.checkoutUrl;
+    } catch (err) {
+      console.error("Payment error:", err);
+      setIsProcessingPayment(false);
+      await renderMessages([
+        "I'm sorry, there was a problem preparing the payment.",
+        "Please try again, or reach out to us if this continues.",
+      ]);
+    }
+  }
+
+  // Handle upsell selection - tries one-click first, falls back to checkout
+  async function handleUpsellSelect(upsellType: "medal" | "candle") {
+    if (!sessionId || isProcessingPayment) return;
+
+    setIsProcessingPayment(true);
+
+    try {
+      // Try one-click upsell first
+      const res = await fetch("/api/payment/one-click-upsell", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ sessionId, upsellType, ...getFbFields() }),
+      });
+
+      if (!res.ok) {
+        const errorData = await res.json();
+        throw new Error(errorData.error || "Failed to process upsell");
+      }
+
+      const data = await res.json();
+
+      if (data.oneClick && data.success) {
+        // One-click successful!
+        setIsProcessingPayment(false);
+
+        // Fire Purchase pixel for one-click upsell
+        if (data.paymentIntentId) {
+          trackPurchase(data.paymentIntentId, UPSELL_AMOUNTS[upsellType] || 0, `upsell_${upsellType}`);
+        }
+
+        // Store the paymentIntentId for shipping update
+        if (data.paymentIntentId) {
+          setLastPaymentIntentId(data.paymentIntentId);
+        }
+
+        // Remove the upsell card
+        if (upsellType === "medal") {
+          setItems((prev) => prev.filter((i) => i.kind !== "upsell_medal"));
+          setUpsellMedalShown(true);
+
+          // Show success message and shipping form
+          await renderMessages([
+            "Thank you! Your blessed medal is being prepared.",
+            "Please provide your shipping address so we can send it to you.",
+          ]);
+          await sleep(500);
+          setItems((prev) => [
+            ...prev,
+            { id: uid("sm"), role: "sm", kind: "shipping_form" },
+          ]);
+          setShowShippingForm(true);
+        } else {
+          // Candle - no shipping needed
+          setItems((prev) => prev.filter((i) => i.kind !== "upsell_candle"));
+          setUpsellCandleShown(true);
+          await showThankYou();
+        }
+      } else if (data.requiresCheckout && data.checkoutUrl) {
+        // Fallback to Stripe checkout
+        window.location.href = data.checkoutUrl;
+      } else {
+        throw new Error("Unexpected response from server");
+      }
+    } catch (err) {
+      console.error("Upsell payment error:", err);
+      setIsProcessingPayment(false);
+      await renderMessages([
+        "I'm sorry, there was a problem with the payment.",
+        "Please try again.",
+      ]);
+    }
+  }
+
+  // Handle shipping form submission
+  async function handleShippingSubmit() {
+    if (!sessionId || isSubmittingShipping) return;
+
+    // Validate required fields
+    if (!shippingForm.name || !shippingForm.addressLine1 || !shippingForm.city ||
+        !shippingForm.postalCode || !shippingForm.country) {
+      await renderMessages(["Please fill in all required fields."]);
+      return;
+    }
+
+    setIsSubmittingShipping(true);
+
+    try {
+      const res = await fetch("/api/payment/save-shipping", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          sessionId,
+          shipping: shippingForm,
+          paymentIntentId: lastPaymentIntentId,
+        }),
+      });
+
+      if (!res.ok) {
+        throw new Error("Failed to save shipping address");
+      }
+
+      // Remove shipping form
+      setItems((prev) => prev.filter((i) => i.kind !== "shipping_form"));
+      setShowShippingForm(false);
+
+      // Show candle upsell or thank you
+      if (!upsellCandleShown) {
+        await sleep(500);
+        await renderMessages([
+          "Your shipping address has been saved.",
+          "Before you go, may I share one more thought?",
+          "Many pilgrims also light a candle at the Grotto. It burns for days, a continuous prayer.",
+        ]);
+        await sleep(500);
+        setItems((prev) => [
+          ...prev,
+          { id: uid("sm"), role: "sm", kind: "upsell_candle" },
+        ]);
+        setUpsellCandleShown(true);
+      } else {
+        await showThankYou();
+      }
+    } catch (err) {
+      console.error("Shipping save error:", err);
+      await renderMessages([
+        "I'm sorry, there was a problem saving your address.",
+        "Please try again.",
+      ]);
+    } finally {
+      setIsSubmittingShipping(false);
+    }
+  }
+
+  // Handle upsell decline
+  async function handleUpsellDecline(currentUpsell: "medal" | "candle") {
+    if (currentUpsell === "medal") {
+      // Remove medal upsell card
+      setItems((prev) => prev.filter((i) => i.kind !== "upsell_medal"));
+      setUpsellMedalShown(true);
+
+      // Show candle upsell
+      await sleep(500);
+      await renderMessages([
+        "I understand. Before you go, may I share one more thought?",
+        "Many pilgrims also light a candle at the Grotto. It burns for days, a continuous prayer.",
+      ]);
+      await sleep(500);
+      setItems((prev) => [
+        ...prev,
+        { id: uid("sm"), role: "sm", kind: "upsell_candle" },
+      ]);
+      setUpsellCandleShown(true);
+    } else {
+      // Declined candle - show thank you
+      setItems((prev) => prev.filter((i) => i.kind !== "upsell_candle"));
+      await showThankYou();
+    }
+  }
+
+  // Show thank you message
+  async function showThankYou() {
+    const name = personName || "your loved one";
+    await renderMessages([
+      "Thank you for entrusting us with this sacred intention.",
+      `${name}'s prayer will be carried to Lourdes with love.`,
+      "You'll receive a confirmation email shortly, and photos when the prayer is delivered.",
+      "May Our Lady's blessing be upon you.",
+    ]);
+    setItems((prev) => [
+      ...prev,
+      { id: uid("sm"), role: "sm", kind: "thank_you" },
+    ]);
+  }
+
+  // Check for payment success or session resume on URL params
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const paymentStatus = params.get("payment");
+    const sessionParam = params.get("session");
+    const upsellParam = params.get("upsell");
+    const returningParam = params.get("returning");
+
+    // Handle returning user session resume
+    if (returningParam === "true" && sessionParam) {
+      // Clean URL
+      window.history.replaceState({}, "", "/chat");
+
+      // Fetch session data and restore
+      fetch(`/api/chat/session/${sessionParam}`)
+        .then((res) => res.json())
+        .then(async (data) => {
+          if (data.error) {
+            // Session not found, start fresh
+            return;
+          }
+
+          setSessionId(sessionParam);
+          setPhase(data.phase);
+          if (data.personName) setPersonName(data.personName);
+
+          // Show welcome back message
+          setIsLoading(false);
+          await renderMessages([
+            "Welcome back! I remember you.",
+            "Your prayer is still here, waiting. Shall we continue where we left off?",
+          ]);
+        })
+        .catch(() => {
+          // Error fetching session, will start fresh
+        });
+
+      return; // Don't run the rest of this effect
+    }
+
+    if (paymentStatus === "success" && sessionParam) {
+      // Get checkout session ID from URL if present
+      const checkoutSessionId = params.get("checkout_session");
+
+      // Clean URL
+      window.history.replaceState({}, "", "/chat");
+
+      // Set session and mark payment completed
+      setSessionId(sessionParam);
+      setPaymentCompleted(true);
+      setIsLoading(false);
+
+      // Verify checkout and update database (for initial payment)
+      if (checkoutSessionId && !upsellParam) {
+        fetch("/api/payment/verify-checkout", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            sessionId: sessionParam,
+            checkoutSessionId,
+            ...getFbFields(),
+          }),
+        })
+          .then((res) => res.json())
+          .then((data) => {
+            console.log("Checkout verified:", data);
+            if (data.paymentIntentId) {
+              trackPurchase(data.paymentIntentId, TIER_AMOUNTS[data.tier] || 35, "prayer_petition");
+            }
+          })
+          .catch((err) => {
+            console.error("Failed to verify checkout:", err);
+          });
+      }
+
+      // Redirect to confirmation page for the full upsell flow
+      if (upsellParam === "medal" || upsellParam === "candle") {
+        // Upsell payment completed via Stripe checkout — redirect back to confirmation page
+        window.location.href = `/confirmation/${sessionParam}`;
+        return;
+      } else {
+        // Main payment completed — redirect to confirmation/upsell page
+        setTimeout(() => {
+          window.location.href = `/confirmation/${sessionParam}`;
+        }, 500);
+      }
+    } else if (paymentStatus === "cancelled" && sessionParam) {
+      // Clean URL
+      window.history.replaceState({}, "", "/chat");
+      setSessionId(sessionParam);
+      setIsLoading(false);
+
+      // Show gentle message about cancelled payment
+      setTimeout(async () => {
+        await renderMessages([
+          "I see you've returned. Please take your time.",
+          "When you're ready, the payment options are still available above.",
+        ]);
+      }, 500);
+    }
+  }, []);
 
   // ========================================================================
   // RENDER
@@ -769,8 +1126,12 @@ export default function ChatPage() {
                           <p className="text-xs text-muted-foreground italic mb-3">
                             "Please carry my prayer to Lourdes. I'm unable to cover the full cost at this time, but I still want to take part in this sacred act."
                           </p>
-                          <button className="w-full rounded-lg bg-secondary hover:bg-secondary/80 text-secondary-foreground py-2.5 px-4 text-sm font-medium transition">
-                            Include my Prayer for $28
+                          <button
+                            onClick={() => handlePaymentTierSelect("hardship")}
+                            disabled={isProcessingPayment}
+                            className="w-full rounded-lg bg-primary/70 hover:bg-primary/60 text-primary-foreground py-2.5 px-4 text-sm font-medium transition disabled:opacity-50"
+                          >
+                            {isProcessingPayment ? "Processing..." : "Include my Prayer for $28"}
                           </button>
                         </div>
 
@@ -780,8 +1141,12 @@ export default function ChatPage() {
                           <p className="text-xs text-muted-foreground italic mb-3">
                             "I'm covering the full cost to bring my prayer to the Grotto. Thank you for making this possible."
                           </p>
-                          <button className="w-full rounded-lg bg-primary hover:bg-primary/90 text-primary-foreground py-2.5 px-4 text-sm font-medium transition">
-                            Full Prayer Delivery for $35
+                          <button
+                            onClick={() => handlePaymentTierSelect("full")}
+                            disabled={isProcessingPayment}
+                            className="w-full rounded-lg bg-primary hover:bg-primary/90 text-primary-foreground py-2.5 px-4 text-sm font-medium transition disabled:opacity-50"
+                          >
+                            {isProcessingPayment ? "Processing..." : "Full Prayer Delivery for $35"}
                           </button>
                         </div>
 
@@ -791,10 +1156,191 @@ export default function ChatPage() {
                           <p className="text-xs text-muted-foreground italic mb-3">
                             "I'm offering a bit more to help someone else who may be struggling. May my prayer and my gift bring blessings to others in need."
                           </p>
-                          <button className="w-full rounded-lg bg-secondary hover:bg-secondary/80 text-secondary-foreground py-2.5 px-4 text-sm font-medium transition">
-                            Send and Support Service for $55
+                          <button
+                            onClick={() => handlePaymentTierSelect("generous")}
+                            disabled={isProcessingPayment}
+                            className="w-full rounded-lg bg-primary/70 hover:bg-primary/60 text-primary-foreground py-2.5 px-4 text-sm font-medium transition disabled:opacity-50"
+                          >
+                            {isProcessingPayment ? "Processing..." : "Send and Support Service for $55"}
                           </button>
                         </div>
+                      </div>
+                    </Card>
+                  </div>
+                );
+              }
+
+              // Medal upsell card
+              if (it.kind === "upsell_medal") {
+                return (
+                  <div key={it.id} className="flex items-end gap-3">
+                    <AvatarSm />
+                    <Card className="w-full max-w-[520px] border-card-border bg-card/85 p-5 shadow-sm backdrop-blur">
+                      <div className="text-base font-semibold text-foreground mb-2">
+                        Blessed Miraculous Medal
+                      </div>
+                      <p className="text-sm text-muted-foreground mb-4">
+                        This medal has been touched to the rock of the Grotto at Lourdes. A tangible connection to this holy place.
+                      </p>
+                      <div className="text-lg font-semibold text-foreground mb-4">$79</div>
+                      <div className="flex gap-3">
+                        <button
+                          onClick={() => handleUpsellSelect("medal")}
+                          disabled={isProcessingPayment}
+                          className="flex-1 rounded-lg bg-primary hover:bg-primary/90 text-primary-foreground py-2.5 px-4 text-sm font-medium transition disabled:opacity-50"
+                        >
+                          {isProcessingPayment ? "Processing..." : "Yes, Send Me a Medal"}
+                        </button>
+                        <button
+                          onClick={() => handleUpsellDecline("medal")}
+                          disabled={isProcessingPayment}
+                          className="rounded-lg border border-card-border bg-card/50 hover:bg-card text-foreground py-2.5 px-4 text-sm font-medium transition disabled:opacity-50"
+                        >
+                          No, thank you
+                        </button>
+                      </div>
+                    </Card>
+                  </div>
+                );
+              }
+
+              // Candle upsell card
+              if (it.kind === "upsell_candle") {
+                return (
+                  <div key={it.id} className="flex items-end gap-3">
+                    <AvatarSm />
+                    <Card className="w-full max-w-[520px] border-card-border bg-card/85 p-5 shadow-sm backdrop-blur">
+                      <div className="text-base font-semibold text-foreground mb-2">
+                        Light a Candle at the Grotto
+                      </div>
+                      <p className="text-sm text-muted-foreground mb-4">
+                        A candle lit at Lourdes burns for days — a continuous prayer ascending with your intention.
+                      </p>
+                      <div className="text-lg font-semibold text-foreground mb-4">$19</div>
+                      <div className="flex gap-3">
+                        <button
+                          onClick={() => handleUpsellSelect("candle")}
+                          disabled={isProcessingPayment}
+                          className="flex-1 rounded-lg bg-primary hover:bg-primary/90 text-primary-foreground py-2.5 px-4 text-sm font-medium transition disabled:opacity-50"
+                        >
+                          {isProcessingPayment ? "Processing..." : "Light a Candle for $19"}
+                        </button>
+                        <button
+                          onClick={() => handleUpsellDecline("candle")}
+                          disabled={isProcessingPayment}
+                          className="rounded-lg border border-card-border bg-card/50 hover:bg-card text-foreground py-2.5 px-4 text-sm font-medium transition disabled:opacity-50"
+                        >
+                          No, thank you
+                        </button>
+                      </div>
+                    </Card>
+                  </div>
+                );
+              }
+
+              // Shipping form (for medal one-click purchase)
+              if (it.kind === "shipping_form") {
+                return (
+                  <div key={it.id} className="flex items-end gap-3">
+                    <AvatarSm />
+                    <Card className="w-full max-w-[520px] border-card-border bg-card/85 p-5 shadow-sm backdrop-blur">
+                      <div className="text-base font-semibold text-foreground mb-4">
+                        Shipping Address
+                      </div>
+                      <div className="space-y-3">
+                        <Input
+                          placeholder="Full Name *"
+                          value={shippingForm.name}
+                          onChange={(e) => setShippingForm({ ...shippingForm, name: e.target.value })}
+                          className="h-11 rounded-xl"
+                          disabled={isSubmittingShipping}
+                        />
+                        <Input
+                          placeholder="Address Line 1 *"
+                          value={shippingForm.addressLine1}
+                          onChange={(e) => setShippingForm({ ...shippingForm, addressLine1: e.target.value })}
+                          className="h-11 rounded-xl"
+                          disabled={isSubmittingShipping}
+                        />
+                        <Input
+                          placeholder="Address Line 2 (optional)"
+                          value={shippingForm.addressLine2}
+                          onChange={(e) => setShippingForm({ ...shippingForm, addressLine2: e.target.value })}
+                          className="h-11 rounded-xl"
+                          disabled={isSubmittingShipping}
+                        />
+                        <div className="grid grid-cols-2 gap-3">
+                          <Input
+                            placeholder="City *"
+                            value={shippingForm.city}
+                            onChange={(e) => setShippingForm({ ...shippingForm, city: e.target.value })}
+                            className="h-11 rounded-xl"
+                            disabled={isSubmittingShipping}
+                          />
+                          <Input
+                            placeholder="State/Province"
+                            value={shippingForm.state}
+                            onChange={(e) => setShippingForm({ ...shippingForm, state: e.target.value })}
+                            className="h-11 rounded-xl"
+                            disabled={isSubmittingShipping}
+                          />
+                        </div>
+                        <div className="grid grid-cols-2 gap-3">
+                          <Input
+                            placeholder="Postal Code *"
+                            value={shippingForm.postalCode}
+                            onChange={(e) => setShippingForm({ ...shippingForm, postalCode: e.target.value })}
+                            className="h-11 rounded-xl"
+                            disabled={isSubmittingShipping}
+                          />
+                          <select
+                            value={shippingForm.country}
+                            onChange={(e) => setShippingForm({ ...shippingForm, country: e.target.value })}
+                            className="h-11 rounded-xl border border-input bg-background px-3 text-sm"
+                            disabled={isSubmittingShipping}
+                          >
+                            <option value="US">United States</option>
+                            <option value="CA">Canada</option>
+                            <option value="GB">United Kingdom</option>
+                            <option value="AU">Australia</option>
+                            <option value="NZ">New Zealand</option>
+                            <option value="IE">Ireland</option>
+                            <option value="FR">France</option>
+                            <option value="DE">Germany</option>
+                            <option value="IT">Italy</option>
+                            <option value="ES">Spain</option>
+                          </select>
+                        </div>
+                        <Button
+                          className="w-full h-11 rounded-xl"
+                          onClick={handleShippingSubmit}
+                          disabled={isSubmittingShipping}
+                        >
+                          {isSubmittingShipping ? "Saving..." : "Save Shipping Address"}
+                        </Button>
+                        <div className="text-xs text-muted-foreground text-center">
+                          Your medal will be shipped within 5-7 business days.
+                        </div>
+                      </div>
+                    </Card>
+                  </div>
+                );
+              }
+
+              // Thank you card
+              if (it.kind === "thank_you") {
+                return (
+                  <div key={it.id} className="flex items-end gap-3">
+                    <AvatarSm />
+                    <Card className="w-full max-w-[520px] border-card-border bg-gradient-to-br from-primary/10 to-card/85 p-6 shadow-sm backdrop-blur">
+                      <div className="text-center">
+                        <div className="text-4xl mb-3">🙏</div>
+                        <div className="text-lg font-semibold text-foreground mb-2">
+                          Your Prayer is on Its Way
+                        </div>
+                        <p className="text-sm text-muted-foreground">
+                          Check your email for confirmation and updates. You'll receive photos when your prayer reaches the Grotto.
+                        </p>
                       </div>
                     </Card>
                   </div>

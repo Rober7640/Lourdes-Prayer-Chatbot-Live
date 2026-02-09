@@ -1,4 +1,4 @@
-import type { Express } from "express";
+import type { Express, Request, Response } from "express";
 import { createServer, type Server } from "http";
 import { storage } from "./storage";
 import {
@@ -16,6 +16,7 @@ import {
 import {
   createSession,
   getSession,
+  updateSession,
   addToHistory,
   addAssistantMessages,
   setBucket,
@@ -43,66 +44,425 @@ import {
   handleUpsellMessage,
   type UpsellAction,
 } from "./services/claude-upsell";
+import {
+  createCheckoutSession,
+  createUpsellCheckoutSession,
+  chargeOneClickUpsell,
+  constructWebhookEvent,
+  handleWebhookEvent,
+  isStripeEnabled,
+  getUpsellAmount,
+  updateStripeCustomerShipping,
+  retrieveCheckoutSession,
+  updatePaymentIntentShipping,
+  type PaymentTier,
+  type UpsellType,
+} from "./services/stripe";
+import {
+  addToFreeList,
+  addToCustomerList,
+  captureEmailLead,
+  isAweberEnabled,
+  parseMagicLinkToken,
+  updateMedalShippingAddress,
+} from "./services/aweber";
+import {
+  isGoogleSheetsEnabled,
+  appendToAllLeads,
+  appendToLourdesGrotto,
+  updateCandleStatus,
+} from "./services/googleSheets";
+import {
+  isFacebookEnabled,
+  sendEvent,
+  extractFbRequestData,
+} from "./services/facebook";
+import * as dbStorage from "./services/db-storage";
 
 // ============================================================================
 // HELPER FUNCTIONS FOR PRAYER EXTRACTION
 // ============================================================================
 
 /**
+ * Check if the assistant's response acknowledges a user-written prayer
+ * This should only match when the bot is directly affirming the user just wrote a prayer
+ */
+function isUserPrayerAcknowledgment(text: string): boolean {
+  const lower = text.toLowerCase();
+  return (
+    lower.includes("that's a beautiful prayer") ||
+    lower.includes("thats a beautiful prayer") ||
+    lower.includes("that's a heartfelt prayer") ||
+    lower.includes("beautiful prayer, straight from your heart") ||
+    lower.includes("carry those exact words") ||
+    lower.includes("your prayer is perfect") ||
+    lower.includes("i'll carry your words") ||
+    lower.includes("i will carry your words")
+  );
+}
+
+/**
+ * Check if the response indicates the bot is using the user's original prayer
+ * (after user said "use my own", "my version", etc.)
+ */
+function isUsingUserOriginalPrayer(text: string): boolean {
+  const lower = text.toLowerCase();
+  return (
+    lower.includes("exactly as you wrote") ||
+    lower.includes("your own words") ||
+    lower.includes("your original prayer") ||
+    lower.includes("the prayer you wrote")
+  );
+}
+
+/**
+ * Check if user's message is a confirmation to use their original prayer
+ * (not the reformatted/Claude version)
+ */
+function isUserChoosingOwnPrayer(text: string): boolean {
+  const lower = text.toLowerCase().trim();
+  return (
+    lower === "use my own" ||
+    lower === "my own" ||
+    lower === "my version" ||
+    lower === "my prayer" ||
+    lower === "the original" ||
+    lower === "original" ||
+    lower === "original one" ||
+    lower === "my original" ||
+    lower === "use mine" ||
+    lower === "mine" ||
+    lower.includes("use my own") ||
+    lower.includes("my version") ||
+    lower.includes("my original") ||
+    lower.includes("the one i wrote") ||
+    lower.includes("what i wrote")
+  );
+}
+
+/**
+ * Extract quoted prayer text from bot message like: Your prayer: "I want him to rest in peace..."
+ */
+function extractQuotedPrayer(text: string): string | null {
+  // Look for pattern: Your prayer: "..." or Your prayer: '...'
+  const quotePatterns = [
+    /your prayer:\s*[""]([^""]+)[""]/i,
+    /your prayer:\s*['']([^'']+)['']/i,
+    /your prayer:\s*"([^"]+)"/i,
+    /your prayer:\s*'([^']+)'/i,
+  ];
+
+  for (const pattern of quotePatterns) {
+    const match = text.match(pattern);
+    if (match && match[1]) {
+      return match[1].trim();
+    }
+  }
+  return null;
+}
+
+/**
+ * Check if the response indicates the prayer is confirmed
+ * (e.g., "I'll carry this prayer" after user said "yes")
+ */
+function isPrayerConfirmation(text: string): boolean {
+  const lower = text.toLowerCase();
+  return (
+    lower.includes("i'll carry this prayer") ||
+    lower.includes("i will carry this prayer") ||
+    lower.includes("beautiful. i'll carry") ||
+    lower.includes("i'll carry your prayer") ||
+    lower.includes("i will carry your prayer")
+  );
+}
+
+/**
+ * Find the user's original prayer from conversation history
+ * Looks for the message after bot asked them to share their prayer
+ */
+function findUserOriginalPrayer(
+  conversationHistory: Array<{ role: string; content: string }>
+): string | null {
+  // Look for "please share your prayer" or similar, then find the next user message
+  for (let i = conversationHistory.length - 1; i >= Math.max(0, conversationHistory.length - 15); i--) {
+    const entry = conversationHistory[i];
+    if (entry.role === "assistant") {
+      const lower = entry.content.toLowerCase();
+      if (
+        lower.includes("please share your prayer") ||
+        lower.includes("share your prayer from your heart") ||
+        lower.includes("i'm listening") // Often follows "share your prayer"
+      ) {
+        // Find the next user message after this
+        for (let j = i + 1; j < conversationHistory.length; j++) {
+          const nextEntry = conversationHistory[j];
+          if (nextEntry.role === "user") {
+            // Make sure it's not a short confirmation like "yes" or "use my own"
+            if (nextEntry.content.length > 20 && !isUserChoosingOwnPrayer(nextEntry.content)) {
+              return nextEntry.content;
+            }
+          }
+        }
+      }
+    }
+  }
+  return null;
+}
+
+/**
  * Extract the prayer text from messages or conversation history
- * Prayers typically contain "Amen" and prayer indicators
+ * Priorities:
+ * 1. If bot quotes back user's prayer like 'Your prayer: "..."', use that
+ * 2. If user chose their own version ("use my own"), find their original prayer
+ * 3. If this is a confirmation, look back for quoted/original prayer
+ * 4. If bot acknowledges user-written prayer (and user message IS a prayer), use it
+ * 5. If current messages have a bot-composed prayer, use that
+ * 6. Look in history for quoted prayers or acknowledgments
  */
 function extractPrayerText(
   currentMessages: string[],
-  conversationHistory: Array<{ role: string; content: string }>
+  conversationHistory: Array<{ role: string; content: string }>,
+  userMessage?: string
 ): string | null {
-  // First check current messages for a prayer
+  const combinedResponse = currentMessages.join(" ");
+
+  // Priority 1: Check if bot quotes back the user's prayer in current response
+  const quotedPrayer = extractQuotedPrayer(combinedResponse);
+  if (quotedPrayer) {
+    return quotedPrayer;
+  }
+
+  // Priority 2: If user said "use my own" or similar, find their original prayer
+  if (userMessage && isUserChoosingOwnPrayer(userMessage)) {
+    // First check if bot quoted it back in the response
+    const quoted = extractQuotedPrayer(combinedResponse);
+    if (quoted) return quoted;
+
+    // Check history for quoted prayer
+    for (let i = conversationHistory.length - 1; i >= Math.max(0, conversationHistory.length - 6); i--) {
+      if (conversationHistory[i].role === "assistant") {
+        const historyQuoted = extractQuotedPrayer(conversationHistory[i].content);
+        if (historyQuoted) return historyQuoted;
+      }
+    }
+
+    // Find their original prayer from history
+    const originalPrayer = findUserOriginalPrayer(conversationHistory);
+    if (originalPrayer) return originalPrayer;
+  }
+
+  // Priority 3: If this is a confirmation response, look back for the prayer
+  if (isPrayerConfirmation(combinedResponse) || isUsingUserOriginalPrayer(combinedResponse)) {
+    // Look in recent history for quoted prayer
+    for (let i = conversationHistory.length - 1; i >= Math.max(0, conversationHistory.length - 6); i--) {
+      const entry = conversationHistory[i];
+      if (entry.role === "assistant") {
+        const quoted = extractQuotedPrayer(entry.content);
+        if (quoted) return quoted;
+      }
+    }
+    // Find user's original prayer
+    const originalPrayer = findUserOriginalPrayer(conversationHistory);
+    if (originalPrayer) return originalPrayer;
+  }
+
+  // Priority 4: Check if current response acknowledges a user-written prayer
+  // BUT only if the user's message actually looks like a prayer (not a confirmation)
+  if (isUserPrayerAcknowledgment(combinedResponse) && userMessage && looksLikePrayer(userMessage)) {
+    return userMessage;
+  }
+
+  // Priority 5: Check current assistant messages for a bot-composed prayer
   for (const msg of currentMessages) {
     if (looksLikePrayer(msg)) {
-      return msg;
+      return extractPrayerPortion(msg);
     }
   }
 
-  // Then check recent assistant messages in history (look backwards)
-  for (let i = conversationHistory.length - 1; i >= 0; i--) {
+  // Priority 6: Check user's message if they wrote their own prayer
+  if (userMessage && looksLikePrayer(userMessage)) {
+    return userMessage;
+  }
+
+  // Priority 7: Look in history for quoted prayers
+  for (let i = conversationHistory.length - 1; i >= Math.max(0, conversationHistory.length - 10); i--) {
     const entry = conversationHistory[i];
-    if (entry.role === "assistant" && looksLikePrayer(entry.content)) {
-      return entry.content;
+    if (entry.role === "assistant") {
+      const quoted = extractQuotedPrayer(entry.content);
+      if (quoted) return quoted;
     }
-    // Don't look back more than 10 messages
-    if (conversationHistory.length - i > 10) break;
+  }
+
+  // Priority 7: Check if any assistant message in history acknowledges a user prayer
+  for (let i = conversationHistory.length - 1; i >= Math.max(0, conversationHistory.length - 10); i--) {
+    const entry = conversationHistory[i];
+    if (entry.role === "assistant" && isUserPrayerAcknowledgment(entry.content)) {
+      // Find the user message right before this acknowledgment
+      for (let j = i - 1; j >= 0; j--) {
+        if (conversationHistory[j].role === "user") {
+          return conversationHistory[j].content;
+        }
+      }
+    }
+  }
+
+  // Priority 8: Look for any prayer-like content in history (fallback)
+  for (let i = conversationHistory.length - 1; i >= Math.max(0, conversationHistory.length - 10); i--) {
+    const entry = conversationHistory[i];
+    if (looksLikePrayer(entry.content)) {
+      if (entry.role === "user") {
+        return entry.content;
+      }
+      return extractPrayerPortion(entry.content);
+    }
   }
 
   return null;
 }
 
 /**
+ * Prayer address patterns to identify where a prayer starts
+ */
+const PRAYER_ADDRESSES = [
+  "blessed mother",
+  "holy mary",
+  "our lady",
+  "dear god",
+  "dear lord",
+  "mother mary",
+  "heavenly father",
+  "lord jesus",
+  "jesus christ",
+  "loving god",
+  "merciful god",
+  "almighty god",
+  "gracious god",
+  "o mary",
+  "hail mary",
+  "most holy",
+  "dearest mother",
+  "virgin mary",
+];
+
+/**
  * Check if a message looks like a prayer
+ * More flexible matching to catch user-written prayers
  */
 function looksLikePrayer(text: string): boolean {
   const lower = text.toLowerCase();
   const hasAmen = lower.includes("amen");
-  const hasPrayerAddress =
-    lower.includes("blessed mother") ||
-    lower.includes("holy mary") ||
-    lower.includes("our lady") ||
-    lower.includes("dear god") ||
-    lower.includes("dear lord");
+  const hasPrayerAddress = PRAYER_ADDRESSES.some(addr => lower.includes(addr));
   const hasPetition =
     lower.includes("please intercede") ||
     lower.includes("please pray") ||
     lower.includes("i ask") ||
-    lower.includes("i pray");
+    lower.includes("i pray") ||
+    lower.includes("please help") ||
+    lower.includes("please protect") ||
+    lower.includes("please heal") ||
+    lower.includes("please bless") ||
+    lower.includes("please guide");
 
-  // Must have Amen and at least one other indicator
-  return hasAmen && (hasPrayerAddress || hasPetition);
+  // Must have Amen OR (prayer address AND petition)
+  return hasAmen || (hasPrayerAddress && hasPetition);
+}
+
+/**
+ * Extract just the prayer portion from text that may contain prefixes/suffixes
+ * Finds text from prayer address to "Amen"
+ */
+function extractPrayerPortion(text: string): string {
+  const lower = text.toLowerCase();
+
+  // Find where the prayer starts (earliest prayer address)
+  let startIndex = -1;
+  for (const addr of PRAYER_ADDRESSES) {
+    const idx = lower.indexOf(addr);
+    if (idx !== -1 && (startIndex === -1 || idx < startIndex)) {
+      startIndex = idx;
+    }
+  }
+
+  // Find where the prayer ends (last "Amen")
+  const amenMatch = lower.lastIndexOf("amen");
+
+  if (startIndex !== -1 && amenMatch !== -1 && amenMatch > startIndex) {
+    // Extract from prayer address to end of "Amen" (plus any punctuation)
+    let endIndex = amenMatch + 4; // "amen" is 4 chars
+    // Include trailing punctuation like "." or "!"
+    while (endIndex < text.length && /[.!,]/.test(text[endIndex])) {
+      endIndex++;
+    }
+    return text.substring(startIndex, endIndex).trim();
+  }
+
+  // If we found a start but no amen, return from start
+  if (startIndex !== -1) {
+    return text.substring(startIndex).trim();
+  }
+
+  // No prayer structure found, return original
+  return text;
 }
 
 /**
  * Check if the user wrote their own prayer
+ * Either by detecting prayer patterns in their message OR
+ * by detecting that the assistant acknowledged/quoted their prayer
  */
-function didUserWritePrayer(userMessage: string): boolean {
-  return looksLikePrayer(userMessage);
+function didUserWritePrayer(
+  userMessage: string,
+  responseMessages?: string[],
+  conversationHistory?: Array<{ role: string; content: string }>
+): boolean {
+  // Check if user's message looks like a prayer
+  if (looksLikePrayer(userMessage)) {
+    return true;
+  }
+
+  // Check if user chose to use their own prayer (e.g., "use my own")
+  if (isUserChoosingOwnPrayer(userMessage)) {
+    return true;
+  }
+
+  if (responseMessages) {
+    const combinedResponse = responseMessages.join(" ");
+
+    // Check if response contains quoted user prayer (Your prayer: "...")
+    if (extractQuotedPrayer(combinedResponse)) {
+      return true;
+    }
+
+    // Check if the response acknowledges a user-written prayer
+    if (isUserPrayerAcknowledgment(combinedResponse)) {
+      return true;
+    }
+
+    // Check if response indicates using user's original prayer
+    if (isUsingUserOriginalPrayer(combinedResponse)) {
+      return true;
+    }
+
+    // Check if this is a confirmation and there was a quoted prayer or original prayer earlier
+    if (isPrayerConfirmation(combinedResponse) && conversationHistory) {
+      for (let i = conversationHistory.length - 1; i >= Math.max(0, conversationHistory.length - 6); i--) {
+        if (conversationHistory[i].role === "assistant") {
+          if (extractQuotedPrayer(conversationHistory[i].content)) {
+            return true;
+          }
+          if (isUsingUserOriginalPrayer(conversationHistory[i].content)) {
+            return true;
+          }
+        }
+      }
+      // Also check if there's an original user prayer in history
+      if (findUserOriginalPrayer(conversationHistory)) {
+        return true;
+      }
+    }
+  }
+
+  return false;
 }
 
 export async function registerRoutes(
@@ -225,6 +585,18 @@ export async function registerRoutes(
       // Add to history
       await addToHistory(sessionId, "user", `[Email: ${email}]`);
 
+      // Capture email as lead in AWeber (async, don't block response)
+      if (isAweberEnabled()) {
+        captureEmailLead(email, {
+          name: session.userName || undefined,
+          sessionId,
+          bucket: session.bucket || undefined,
+          personName: session.personName || undefined,
+        }).catch((err) => console.error("AWeber lead capture failed:", err));
+      }
+
+      // Note: Lead event fires when prayer is saved, not on email capture
+
       // Get the follow-up question based on bucket
       const userName = session.userName || "dear";
       const bucketFollowUps: Record<string, string[]> = {
@@ -286,6 +658,24 @@ export async function registerRoutes(
         return res.status(404).json({ error: "Session not found" });
       }
 
+      // Reject user-written prayer if it exceeds 500 characters
+      if (session.phase === "deepening" && message.length > 500) {
+        // Check if this looks like a prayer (contains prayer-like patterns or is in prayer sub-phase)
+        const inPrayerPhase = ["asking_preference", "simple_offered", "detailed_offered", "both_offered"].includes(session.prayerSubPhase);
+        if (inPrayerPhase) {
+          await addToHistory(sessionId, "user", message);
+          const rejectMsg = `Your prayer is ${message.length} characters long. Please shorten it to 500 characters or less so we can carry it to the Grotto. Take your time — every word matters.`;
+          await addAssistantMessages(sessionId, [rejectMsg]);
+          return res.json({
+            messages: [rejectMsg],
+            uiHint: "none",
+            phase: session.phase,
+            extracted: {},
+            flags: { readyForPayment: false },
+          });
+        }
+      }
+
       // Add user message to history
       await addToHistory(sessionId, "user", message);
 
@@ -302,16 +692,54 @@ export async function registerRoutes(
         await setReadyForPayment(sessionId);
 
         // Extract and save the confirmed prayer
-        // Look for the prayer in recent conversation history or current response
-        const prayerText = extractPrayerText(response.messages, session.conversationHistory);
+        // Look for the prayer in recent conversation history, current response, or user's message
+        let prayerText = extractPrayerText(response.messages, session.conversationHistory, message);
         if (prayerText) {
           // Determine if prayer was user-written or Claude-composed
-          const userWrotePrayer = didUserWritePrayer(message);
+          const userWrotePrayer = didUserWritePrayer(message, response.messages, session.conversationHistory);
+
+          // Enforce 600 char limit on Claude-composed prayers (user prayers are rejected upfront at 500)
+          if (!userWrotePrayer && prayerText.length > 600) {
+            prayerText = prayerText.substring(0, 600).trim();
+          }
           await savePrayerIntention(
             sessionId,
             prayerText,
             userWrotePrayer ? "user" : "claude"
           );
+
+          // Add to AWeber free list when prayer is finalized
+          if (session.userEmail && isAweberEnabled()) {
+            addToFreeList(session.userEmail, {
+              name: session.userName || undefined,
+              prayer: prayerText,
+              sessionId,
+              bucket: session.bucket || undefined,
+            }).catch((err) => console.error("Failed to add to AWeber free list:", err));
+          }
+
+          // Facebook CAPI Lead event — fires when prayer is saved
+          if (isFacebookEnabled()) {
+            const fbData = extractFbRequestData(req);
+            sendEvent({
+              eventName: "Lead",
+              eventId: req.body.fbEventId || `lead_${sessionId}`,
+              email: session.userEmail || undefined,
+              userName: session.userName || undefined,
+              ...fbData,
+              customData: { content_name: "prayer_intention" },
+            }).catch((err) => console.error("Facebook CAPI Lead failed:", err));
+          }
+
+          // Add to Google Sheet "all leads" (once per session)
+          if (isGoogleSheetsEnabled() && !session.addedToAllLeads) {
+            session.addedToAllLeads = true;
+            appendToAllLeads({
+              name: session.userName || "",
+              email: session.userEmail || "",
+              prayer: prayerText,
+            }).catch((err) => console.error("Google Sheets all leads append failed:", err));
+          }
         }
       }
       if (response.flags.conversationComplete) {
@@ -653,28 +1081,242 @@ export async function registerRoutes(
         }
       }
 
-      // TODO: Create Stripe checkout session for $79 medal
-      // For now, return success with placeholder
-      console.log("Medal order received:", {
-        upsellSessionId,
-        shipping,
-        amount: 7900, // $79 in cents
-      });
+      const originalSessionId = session.sessionId;
+      const originalSession = getSession(originalSessionId);
+      if (!originalSession) {
+        return res.status(404).json({ error: "Original session not found" });
+      }
 
-      // Set purchase type and phase
+      // Try one-click charge
+      if (isStripeEnabled()) {
+        const result = await chargeOneClickUpsell({ sessionId: originalSessionId, upsellType: "medal" });
+
+        if (result.success) {
+          console.log(`Medal one-click charge successful: ${result.paymentIntentId}`);
+
+          // Save shipping address to session & database
+          updateSession(originalSessionId, {
+            shippingName: shipping.name,
+            shippingAddressLine1: shipping.address1,
+            shippingAddressLine2: shipping.address2 || null,
+            shippingCity: shipping.city,
+            shippingState: shipping.state || null,
+            shippingPostalCode: shipping.postal,
+            shippingCountry: shipping.country,
+          });
+
+          const DB_ENABLED = !!process.env.DATABASE_URL;
+          if (DB_ENABLED) {
+            dbStorage.updateSession(originalSessionId, {
+              shippingName: shipping.name,
+              shippingAddressLine1: shipping.address1,
+              shippingAddressLine2: shipping.address2 || null,
+              shippingCity: shipping.city,
+              shippingState: shipping.state || null,
+              shippingPostalCode: shipping.postal,
+              shippingCountry: shipping.country,
+            }).catch((err) => console.error("Failed to save shipping to DB:", err));
+          }
+
+          // Update Stripe payment intent with shipping address
+          if (result.paymentIntentId) {
+            updatePaymentIntentShipping(result.paymentIntentId, {
+              name: shipping.name,
+              addressLine1: shipping.address1,
+              addressLine2: shipping.address2 || null,
+              city: shipping.city,
+              state: shipping.state || null,
+              postalCode: shipping.postal,
+              country: shipping.country,
+            }).catch((err) => console.error("Failed to update Stripe shipping:", err));
+          }
+
+          // Add to AWeber upsell list, then update shipping address
+          if (originalSession.userEmail && isAweberEnabled()) {
+            addToCustomerList(originalSession.userEmail, "medal", {
+              name: originalSession.userName || undefined,
+              stripePaymentId: result.paymentIntentId || undefined,
+            }).then(() => {
+              // Update shipping address after subscriber is added to the list
+              return updateMedalShippingAddress(originalSession.userEmail!, {
+                name: shipping.name,
+                addressLine1: shipping.address1,
+                addressLine2: shipping.address2 || null,
+                city: shipping.city,
+                state: shipping.state || null,
+                postalCode: shipping.postal,
+                country: shipping.country,
+              });
+            }).catch((err) => console.error("AWeber medal list/shipping update failed:", err));
+          }
+
+          // Facebook CAPI Purchase event
+          if (isFacebookEnabled() && result.paymentIntentId) {
+            const fbData = extractFbRequestData(req);
+            sendEvent({
+              eventName: "Purchase",
+              eventId: result.paymentIntentId,
+              email: originalSession.userEmail || undefined,
+              userName: originalSession.userName || undefined,
+              ...fbData,
+              customData: { value: 79, currency: "USD", content_type: "product", content_ids: ["upsell_medal"] },
+            }).catch((err) => console.error("Facebook CAPI Purchase (medal) failed:", err));
+          }
+
+          // Set purchase type and phase
+          setPurchaseType(upsellSessionId, "medal");
+          setUpsellPhase(upsellSessionId, "complete");
+
+          return res.json({
+            success: true,
+            oneClick: true,
+            uiHint: "show_thank_you_medal",
+            phase: "complete",
+          });
+        }
+
+        // One-click failed — create Stripe checkout session as fallback
+        console.log("Medal one-click failed, creating checkout fallback");
+        const baseUrl = `${req.protocol}://${req.get("host")}`;
+        const successUrl = `${baseUrl}/confirmation/${originalSessionId}?upsell=medal`;
+        const cancelUrl = `${baseUrl}/confirmation/${originalSessionId}`;
+
+        const checkoutResult = await createUpsellCheckoutSession({
+          sessionId: originalSessionId,
+          upsellType: "medal",
+          email: originalSession.userEmail!,
+          successUrl,
+          cancelUrl,
+          requiresShipping: true,
+        });
+
+        if (!checkoutResult) {
+          return res.status(500).json({ error: "Failed to create checkout session" });
+        }
+
+        return res.json({
+          success: false,
+          oneClick: false,
+          requiresCheckout: true,
+          checkoutUrl: checkoutResult.url,
+        });
+      }
+
+      // Stripe not enabled — just log
+      console.log("Stripe not enabled, medal order logged only:", { upsellSessionId, shipping });
       setPurchaseType(upsellSessionId, "medal");
       setUpsellPhase(upsellSessionId, "complete");
 
       res.json({
         success: true,
-        message: "Medal order received",
         uiHint: "show_thank_you_medal",
         phase: "complete",
-        // In production: stripeSessionUrl for redirect
       });
     } catch (error) {
       console.error("Error processing medal order:", error);
       res.status(500).json({ error: "Failed to process medal order" });
+    }
+  });
+
+  // ========================================================================
+  // SESSION RESUME ENDPOINTS
+  // ========================================================================
+
+  /**
+   * GET /api/chat/resume/:token
+   * Resume a session from a magic link token
+   */
+  app.get("/api/chat/resume/:token", async (req, res) => {
+    try {
+      const { token } = req.params;
+
+      // Parse the magic link token
+      const parsed = parseMagicLinkToken(token);
+      if (!parsed) {
+        return res.status(400).json({ error: "Invalid resume token" });
+      }
+
+      const { sessionId, timestamp } = parsed;
+
+      // Check if token is expired (7 days)
+      const SEVEN_DAYS_MS = 7 * 24 * 60 * 60 * 1000;
+      if (Date.now() - timestamp > SEVEN_DAYS_MS) {
+        return res.json({
+          status: "expired",
+          message: "This link has expired. Please start a new conversation.",
+        });
+      }
+
+      // Try to find session - first in memory, then in database
+      let session = getSession(sessionId);
+      let messages: Array<{ role: string; content: string }> = [];
+
+      const DB_ENABLED = !!process.env.DATABASE_URL;
+
+      if (!session && DB_ENABLED) {
+        // Try to restore from database
+        try {
+          const dbSession = await dbStorage.getSession(sessionId);
+          if (dbSession) {
+            // Check if already converted
+            if (dbSession.paymentStatus === "completed") {
+              return res.json({
+                status: "converted",
+                message: "This prayer has already been submitted. Check your email for updates.",
+              });
+            }
+
+            // Load messages from database
+            const dbMessages = await dbStorage.getSessionMessages(sessionId);
+            messages = dbMessages.map((m) => ({
+              role: m.role,
+              content: m.content,
+            }));
+
+            // Return session data for restoration
+            return res.json({
+              status: "valid",
+              sessionId,
+              phase: dbSession.phase,
+              bucket: dbSession.bucket,
+              userName: dbSession.userName,
+              userEmail: dbSession.userEmail,
+              messages,
+            });
+          }
+        } catch (error) {
+          console.error("Error loading session from DB:", error);
+        }
+      }
+
+      if (session) {
+        // Check if already converted
+        if (session.paymentStatus === "completed") {
+          return res.json({
+            status: "converted",
+            message: "This prayer has already been submitted. Check your email for updates.",
+          });
+        }
+
+        return res.json({
+          status: "valid",
+          sessionId: session.sessionId,
+          phase: session.phase,
+          bucket: session.bucket,
+          userName: session.userName,
+          userEmail: session.userEmail,
+          personName: session.personName,
+          messages: session.conversationHistory,
+        });
+      }
+
+      return res.json({
+        status: "not_found",
+        message: "Session not found. Please start a new conversation.",
+      });
+    } catch (error) {
+      console.error("Error resuming session:", error);
+      res.status(500).json({ error: "Failed to resume session" });
     }
   });
 
@@ -695,21 +1337,727 @@ export async function registerRoutes(
         return res.status(404).json({ error: "Upsell session not found" });
       }
 
-      // TODO: Create Stripe checkout session for $19 candle
-      // For now, return success with placeholder
-      console.log("Candle order received:", {
-        upsellSessionId,
-        amount: 1900, // $19 in cents
-      });
+      const originalSessionId = session.sessionId;
+      const originalSession = getSession(originalSessionId);
+      if (!originalSession) {
+        return res.status(404).json({ error: "Original session not found" });
+      }
+
+      // Try one-click charge
+      if (isStripeEnabled()) {
+        const result = await chargeOneClickUpsell({ sessionId: originalSessionId, upsellType: "candle" });
+
+        if (result.success) {
+          console.log(`Candle one-click charge successful: ${result.paymentIntentId}`);
+
+          // Add to AWeber upsell list
+          if (originalSession.userEmail && isAweberEnabled()) {
+            addToCustomerList(originalSession.userEmail, "candle", {
+              name: originalSession.userName || undefined,
+              stripePaymentId: result.paymentIntentId || undefined,
+            }).catch((err) => console.error("AWeber candle upsell list add failed:", err));
+          }
+
+          // Update candle status in Google Sheet
+          if (originalSession.userEmail && isGoogleSheetsEnabled()) {
+            updateCandleStatus(originalSession.userEmail)
+              .catch((err) => console.error("Google Sheets candle update failed:", err));
+          }
+
+          // Facebook CAPI Purchase event
+          if (isFacebookEnabled() && result.paymentIntentId) {
+            const fbData = extractFbRequestData(req);
+            sendEvent({
+              eventName: "Purchase",
+              eventId: result.paymentIntentId,
+              email: originalSession.userEmail || undefined,
+              userName: originalSession.userName || undefined,
+              ...fbData,
+              customData: { value: 19, currency: "USD", content_type: "product", content_ids: ["upsell_candle"] },
+            }).catch((err) => console.error("Facebook CAPI Purchase (candle) failed:", err));
+          }
+
+          // Set purchase type and phase
+          setPurchaseType(upsellSessionId, "candle");
+          setUpsellPhase(upsellSessionId, "complete");
+
+          return res.json({
+            success: true,
+            oneClick: true,
+            uiHint: "show_thank_you_candle",
+            phase: "complete",
+          });
+        }
+
+        // One-click failed — create Stripe checkout session as fallback
+        console.log("Candle one-click failed, creating checkout fallback");
+        const baseUrl = `${req.protocol}://${req.get("host")}`;
+        const successUrl = `${baseUrl}/confirmation/${originalSessionId}?upsell=candle`;
+        const cancelUrl = `${baseUrl}/confirmation/${originalSessionId}`;
+
+        const checkoutResult = await createUpsellCheckoutSession({
+          sessionId: originalSessionId,
+          upsellType: "candle",
+          email: originalSession.userEmail!,
+          successUrl,
+          cancelUrl,
+          requiresShipping: false,
+        });
+
+        if (!checkoutResult) {
+          return res.status(500).json({ error: "Failed to create checkout session" });
+        }
+
+        return res.json({
+          success: false,
+          oneClick: false,
+          requiresCheckout: true,
+          checkoutUrl: checkoutResult.url,
+        });
+      }
+
+      // Stripe not enabled — just log
+      console.log("Stripe not enabled, candle order logged only:", { upsellSessionId });
+      setPurchaseType(upsellSessionId, "candle");
+      setUpsellPhase(upsellSessionId, "complete");
 
       res.json({
         success: true,
-        message: "Candle order received",
-        // In production: stripeSessionUrl for redirect
+        uiHint: "show_thank_you_candle",
+        phase: "complete",
       });
     } catch (error) {
       console.error("Error processing candle order:", error);
       res.status(500).json({ error: "Failed to process candle order" });
+    }
+  });
+
+  /**
+   * GET /api/chat/check-returning
+   * Check if user has a saved session (by email)
+   */
+  app.get("/api/chat/check-returning", async (req, res) => {
+    try {
+      const { email } = req.query;
+
+      if (!email || typeof email !== "string") {
+        return res.status(400).json({ error: "Email required" });
+      }
+
+      const DB_ENABLED = !!process.env.DATABASE_URL;
+      if (!DB_ENABLED) {
+        return res.json({ hasSession: false });
+      }
+
+      try {
+        const session = await dbStorage.getSessionByEmail(email);
+        if (session && session.paymentStatus !== "completed") {
+          return res.json({
+            hasSession: true,
+            sessionId: session.id,
+            phase: session.phase,
+          });
+        }
+      } catch (error) {
+        console.error("Error checking returning user:", error);
+      }
+
+      return res.json({ hasSession: false });
+    } catch (error) {
+      console.error("Error checking returning user:", error);
+      res.status(500).json({ error: "Failed to check returning user" });
+    }
+  });
+
+  // ========================================================================
+  // PAYMENT API ENDPOINTS
+  // ========================================================================
+
+  /**
+   * POST /api/payment/create-checkout
+   * Create a Stripe checkout session for prayer payment
+   */
+  app.post("/api/payment/create-checkout", async (req, res) => {
+    try {
+      const { sessionId, tier } = req.body;
+
+      if (!sessionId || !tier) {
+        return res.status(400).json({ error: "Missing sessionId or tier" });
+      }
+
+      // Validate tier
+      const validTiers: PaymentTier[] = ["hardship", "full", "generous"];
+      if (!validTiers.includes(tier)) {
+        return res.status(400).json({ error: "Invalid payment tier" });
+      }
+
+      const session = getSession(sessionId);
+      if (!session) {
+        return res.status(404).json({ error: "Session not found" });
+      }
+
+      if (!session.userEmail) {
+        return res.status(400).json({ error: "Email not captured - cannot create payment" });
+      }
+
+      if (!isStripeEnabled()) {
+        return res.status(503).json({ error: "Payment system not configured" });
+      }
+
+      // Facebook CAPI InitiateCheckout event
+      if (isFacebookEnabled() && req.body.fbEventId) {
+        const fbData = extractFbRequestData(req);
+        const tierAmounts: Record<string, number> = { hardship: 28, full: 35, generous: 55 };
+        sendEvent({
+          eventName: "InitiateCheckout",
+          eventId: req.body.fbEventId,
+          email: session.userEmail || undefined,
+          userName: session.userName || undefined,
+          ...fbData,
+          customData: { value: tierAmounts[tier] || 35, currency: "USD", content_type: "product", content_ids: [`prayer_${tier}`] },
+        }).catch((err) => console.error("Facebook CAPI InitiateCheckout failed:", err));
+      }
+
+      // Build URLs for redirect - include {CHECKOUT_SESSION_ID} placeholder for Stripe
+      const baseUrl = `${req.protocol}://${req.get("host")}`;
+      const successUrl = `${baseUrl}/confirmation/${sessionId}?checkout_session={CHECKOUT_SESSION_ID}`;
+      const cancelUrl = `${baseUrl}/chat?session=${sessionId}&payment=cancelled`;
+
+      const result = await createCheckoutSession({
+        sessionId,
+        tier,
+        email: session.userEmail,
+        successUrl,
+        cancelUrl,
+      });
+
+      if (!result) {
+        return res.status(500).json({ error: "Failed to create checkout session" });
+      }
+
+      res.json({
+        checkoutUrl: result.url,
+        checkoutSessionId: result.checkoutSessionId,
+      });
+    } catch (error) {
+      console.error("Error creating checkout:", error);
+      res.status(500).json({ error: "Failed to create checkout session" });
+    }
+  });
+
+  /**
+   * POST /api/payment/create-upsell-checkout
+   * Create a Stripe checkout session for upsell (medal/candle)
+   */
+  app.post("/api/payment/create-upsell-checkout", async (req, res) => {
+    try {
+      const { sessionId, upsellType } = req.body;
+
+      if (!sessionId || !upsellType) {
+        return res.status(400).json({ error: "Missing sessionId or upsellType" });
+      }
+
+      // Validate upsell type
+      const validTypes: UpsellType[] = ["medal", "candle"];
+      if (!validTypes.includes(upsellType)) {
+        return res.status(400).json({ error: "Invalid upsell type" });
+      }
+
+      const session = getSession(sessionId);
+      if (!session) {
+        return res.status(404).json({ error: "Session not found" });
+      }
+
+      if (!session.userEmail) {
+        return res.status(400).json({ error: "Email not captured - cannot create payment" });
+      }
+
+      if (!isStripeEnabled()) {
+        return res.status(503).json({ error: "Payment system not configured" });
+      }
+
+      // Build URLs for redirect
+      const baseUrl = `${req.protocol}://${req.get("host")}`;
+      const successUrl = `${baseUrl}/confirmation/${sessionId}?upsell=${upsellType}`;
+      const cancelUrl = `${baseUrl}/confirmation/${sessionId}`;
+
+      const result = await createUpsellCheckoutSession({
+        sessionId,
+        upsellType,
+        email: session.userEmail,
+        successUrl,
+        cancelUrl,
+        requiresShipping: upsellType === "medal",
+      });
+
+      if (!result) {
+        return res.status(500).json({ error: "Failed to create upsell checkout session" });
+      }
+
+      res.json({
+        checkoutUrl: result.url,
+        checkoutSessionId: result.checkoutSessionId,
+      });
+    } catch (error) {
+      console.error("Error creating upsell checkout:", error);
+      res.status(500).json({ error: "Failed to create upsell checkout session" });
+    }
+  });
+
+  /**
+   * POST /api/payment/one-click-upsell
+   * Try one-click charge for upsell, return fallback URL if not possible
+   */
+  app.post("/api/payment/one-click-upsell", async (req, res) => {
+    try {
+      const { sessionId, upsellType } = req.body;
+
+      if (!sessionId || !upsellType) {
+        return res.status(400).json({ error: "Missing sessionId or upsellType" });
+      }
+
+      const validTypes: UpsellType[] = ["medal", "candle"];
+      if (!validTypes.includes(upsellType)) {
+        return res.status(400).json({ error: "Invalid upsell type" });
+      }
+
+      const session = getSession(sessionId);
+      if (!session) {
+        return res.status(404).json({ error: "Session not found" });
+      }
+
+      if (!session.userEmail) {
+        return res.status(400).json({ error: "Email not captured" });
+      }
+
+      if (!isStripeEnabled()) {
+        return res.status(503).json({ error: "Payment system not configured" });
+      }
+
+      // Try one-click charge
+      const result = await chargeOneClickUpsell({ sessionId, upsellType });
+
+      if (result.success) {
+        // One-click successful
+        console.log(`One-click upsell success: ${upsellType} for session ${sessionId}`);
+
+        // Add to AWeber upsell list
+        if (session.userEmail && isAweberEnabled()) {
+          addToCustomerList(session.userEmail, upsellType, {
+            name: session.userName || undefined,
+            stripePaymentId: result.paymentIntentId || undefined,
+          }).catch((err) => console.error(`AWeber ${upsellType} upsell list add failed:`, err));
+        }
+
+        // Update candle status in Google Sheet
+        if (upsellType === "candle" && session.userEmail && isGoogleSheetsEnabled()) {
+          updateCandleStatus(session.userEmail)
+            .catch((err) => console.error("Google Sheets candle update failed:", err));
+        }
+
+        // Facebook CAPI Purchase event for one-click upsell
+        if (isFacebookEnabled() && result.paymentIntentId) {
+          const fbData = extractFbRequestData(req);
+          const upsellAmounts: Record<string, number> = { medal: 79, candle: 19 };
+          sendEvent({
+            eventName: "Purchase",
+            eventId: result.paymentIntentId,
+            email: session.userEmail || undefined,
+            userName: session.userName || undefined,
+            ...fbData,
+            customData: { value: upsellAmounts[upsellType] || 0, currency: "USD", content_type: "product", content_ids: [`upsell_${upsellType}`] },
+          }).catch((err) => console.error(`Facebook CAPI Purchase (${upsellType}) failed:`, err));
+        }
+
+        return res.json({
+          success: true,
+          oneClick: true,
+          paymentIntentId: result.paymentIntentId,
+          // For medal, frontend should show shipping form
+          requiresShipping: upsellType === "medal",
+        });
+      }
+
+      // One-click failed, create fallback checkout URL
+      console.log(`One-click failed, creating checkout fallback for ${upsellType}`);
+      const baseUrl = `${req.protocol}://${req.get("host")}`;
+      const successUrl = `${baseUrl}/confirmation/${sessionId}?upsell=${upsellType}`;
+      const cancelUrl = `${baseUrl}/confirmation/${sessionId}`;
+
+      const checkoutResult = await createUpsellCheckoutSession({
+        sessionId,
+        upsellType,
+        email: session.userEmail,
+        successUrl,
+        cancelUrl,
+        requiresShipping: upsellType === "medal",
+      });
+
+      if (!checkoutResult) {
+        return res.status(500).json({ error: "Failed to create checkout session" });
+      }
+
+      res.json({
+        success: false,
+        oneClick: false,
+        requiresCheckout: true,
+        checkoutUrl: checkoutResult.url,
+      });
+    } catch (error) {
+      console.error("Error processing one-click upsell:", error);
+      res.status(500).json({ error: "Failed to process upsell" });
+    }
+  });
+
+  /**
+   * POST /api/payment/save-shipping
+   * Save shipping address after one-click medal purchase
+   */
+  app.post("/api/payment/save-shipping", async (req, res) => {
+    try {
+      const { sessionId, shipping, paymentIntentId } = req.body;
+
+      if (!sessionId || !shipping) {
+        return res.status(400).json({ error: "Missing sessionId or shipping data" });
+      }
+
+      const session = getSession(sessionId);
+      if (!session) {
+        return res.status(404).json({ error: "Session not found" });
+      }
+
+      // Validate required shipping fields
+      const { name, addressLine1, city, state, postalCode, country } = shipping;
+      if (!name || !addressLine1 || !city || !postalCode || !country) {
+        return res.status(400).json({ error: "Missing required shipping fields" });
+      }
+
+      const shippingData = {
+        name,
+        addressLine1,
+        addressLine2: shipping.addressLine2 || null,
+        city,
+        state: state || null,
+        postalCode,
+        country,
+      };
+
+      // Update in-memory session
+      updateSession(sessionId, {
+        shippingName: name,
+        shippingAddressLine1: addressLine1,
+        shippingAddressLine2: shipping.addressLine2 || null,
+        shippingCity: city,
+        shippingState: state || null,
+        shippingPostalCode: postalCode,
+        shippingCountry: country,
+      });
+
+      // Save to database
+      const DB_ENABLED = !!process.env.DATABASE_URL;
+      if (DB_ENABLED) {
+        try {
+          await dbStorage.updateSession(sessionId, {
+            shippingName: name,
+            shippingAddressLine1: addressLine1,
+            shippingAddressLine2: shipping.addressLine2 || null,
+            shippingCity: city,
+            shippingState: state || null,
+            shippingPostalCode: postalCode,
+            shippingCountry: country,
+          });
+        } catch (error) {
+          console.error("Failed to save shipping to DB:", error);
+        }
+      }
+
+      // Sync shipping address to Stripe customer
+      if (session.stripeCustomerId) {
+        try {
+          await updateStripeCustomerShipping(session.stripeCustomerId, shippingData);
+          console.log(`Shipping synced to Stripe customer ${session.stripeCustomerId}`);
+        } catch (error) {
+          console.error("Failed to sync shipping to Stripe customer:", error);
+        }
+      }
+
+      // Update PaymentIntent with shipping (so it shows in Stripe dashboard payment details)
+      if (paymentIntentId) {
+        try {
+          await updatePaymentIntentShipping(paymentIntentId, shippingData);
+          console.log(`Shipping synced to PaymentIntent ${paymentIntentId}`);
+        } catch (error) {
+          console.error("Failed to sync shipping to PaymentIntent:", error);
+        }
+      }
+
+      // Update AWeber medal upsell subscriber with shipping address
+      if (session.userEmail && isAweberEnabled()) {
+        updateMedalShippingAddress(session.userEmail, shippingData)
+          .then((success) => {
+            if (success) {
+              console.log(`AWeber shipping address updated for ${session.userEmail}`);
+            }
+          })
+          .catch((err) => console.error("Failed to update AWeber shipping address:", err));
+      }
+
+      console.log(`Shipping saved for session ${sessionId}`);
+
+      res.json({
+        success: true,
+        message: "Shipping address saved",
+      });
+    } catch (error) {
+      console.error("Error saving shipping:", error);
+      res.status(500).json({ error: "Failed to save shipping address" });
+    }
+  });
+
+  /**
+   * GET /api/payment/status/:sessionId
+   * Check payment status for a session
+   */
+  app.get("/api/payment/status/:sessionId", async (req, res) => {
+    try {
+      const { sessionId } = req.params;
+
+      const session = getSession(sessionId);
+      if (!session) {
+        return res.status(404).json({ error: "Session not found" });
+      }
+
+      res.json({
+        paymentStatus: session.paymentStatus || "none",
+        readyForPayment: session.flags.readyForPayment,
+      });
+    } catch (error) {
+      console.error("Error checking payment status:", error);
+      res.status(500).json({ error: "Failed to check payment status" });
+    }
+  });
+
+  /**
+   * POST /api/payment/verify-checkout
+   * Verify and finalize payment after returning from Stripe checkout.
+   * This retrieves the payment_intent from the checkout session and updates the database.
+   */
+  app.post("/api/payment/verify-checkout", async (req, res) => {
+    try {
+      const { sessionId, checkoutSessionId } = req.body;
+
+      if (!sessionId || !checkoutSessionId) {
+        return res.status(400).json({ error: "Missing sessionId or checkoutSessionId" });
+      }
+
+      const session = getSession(sessionId);
+      if (!session) {
+        return res.status(404).json({ error: "Session not found" });
+      }
+
+      if (!isStripeEnabled()) {
+        return res.status(503).json({ error: "Payment system not configured" });
+      }
+
+      // Retrieve checkout session from Stripe to get payment_intent
+      const checkoutDetails = await retrieveCheckoutSession(checkoutSessionId);
+      if (!checkoutDetails) {
+        return res.status(400).json({ error: "Could not retrieve checkout session" });
+      }
+
+      console.log(`Verifying checkout: sessionId=${sessionId}, paymentIntentId=${checkoutDetails.paymentIntentId}, status=${checkoutDetails.paymentStatus}`);
+
+      const DB_ENABLED = !!process.env.DATABASE_URL;
+
+      if (checkoutDetails.paymentStatus === "paid" && DB_ENABLED) {
+        try {
+          // Find payment record by stripe_session_id and update with payment_intent
+          const payment = await dbStorage.getPaymentByStripeSession(checkoutSessionId);
+          if (payment) {
+            await dbStorage.updatePayment(payment.id, {
+              stripePaymentId: checkoutDetails.paymentIntentId,
+              status: "completed",
+              completedAt: new Date(),
+            });
+            console.log(`Payment record ${payment.id} updated: stripePaymentId=${checkoutDetails.paymentIntentId}`);
+          }
+
+          // Update session with payment status and customer ID
+          const sessionUpdate: Record<string, any> = {
+            paymentStatus: "completed",
+          };
+          if (checkoutDetails.customerId) {
+            sessionUpdate.stripeCustomerId = checkoutDetails.customerId;
+          }
+          await dbStorage.updateSession(sessionId, sessionUpdate);
+
+          // Update in-memory session
+          updateSession(sessionId, sessionUpdate);
+
+          // Update prayer intention status
+          const prayer = await dbStorage.getPrayerBySession(sessionId);
+          if (prayer) {
+            await dbStorage.updatePrayerIntention(prayer.id, {
+              status: "paid",
+            });
+          }
+
+          // Add to AWeber paid list
+          if (session.userEmail && isAweberEnabled()) {
+            const payment = await dbStorage.getPaymentByStripeSession(checkoutSessionId);
+            addToCustomerList(session.userEmail, "prayer", {
+              name: session.userName || undefined,
+              prayer: session.prayerText || undefined,
+              tier: payment?.tier || undefined,
+              stripePaymentId: checkoutDetails.paymentIntentId || undefined,
+            }).catch((err) => console.error("AWeber paid list add failed:", err));
+          }
+
+          // Add to Google Sheet "lourdes grotto" (once per session)
+          if (isGoogleSheetsEnabled() && !session.addedToLourdesGrotto) {
+            session.addedToLourdesGrotto = true;
+            appendToLourdesGrotto({
+              orderId: checkoutDetails.paymentIntentId || "",
+              name: session.userName || "",
+              email: session.userEmail || "",
+              prayer: session.prayerText || "",
+            }).catch((err) => console.error("Google Sheets lourdes grotto append failed:", err));
+          }
+
+          // Facebook CAPI Purchase event
+          if (isFacebookEnabled() && checkoutDetails.paymentIntentId) {
+            const fbData = extractFbRequestData(req);
+            const tierAmounts: Record<string, number> = { hardship: 28, full: 35, generous: 55 };
+            sendEvent({
+              eventName: "Purchase",
+              eventId: checkoutDetails.paymentIntentId,
+              email: session.userEmail || undefined,
+              userName: session.userName || undefined,
+              ...fbData,
+              customData: { value: tierAmounts[payment?.tier as string] || 35, currency: "USD", content_type: "product", content_ids: ["prayer_petition"] },
+            }).catch((err) => console.error("Facebook CAPI Purchase failed:", err));
+          }
+        } catch (error) {
+          console.error("Error updating payment records:", error);
+        }
+      }
+
+      // Look up tier for client-side pixel
+      let verifiedTier: string | undefined;
+      const DB_ENABLED_FOR_TIER = !!process.env.DATABASE_URL;
+      if (DB_ENABLED_FOR_TIER) {
+        try {
+          const paymentRecord = await dbStorage.getPaymentByStripeSession(checkoutSessionId);
+          verifiedTier = paymentRecord?.tier || undefined;
+        } catch (_) { /* ignore */ }
+      }
+
+      res.json({
+        success: true,
+        paymentStatus: checkoutDetails.paymentStatus,
+        paymentIntentId: checkoutDetails.paymentIntentId,
+        customerId: checkoutDetails.customerId,
+        tier: verifiedTier,
+      });
+    } catch (error) {
+      console.error("Error verifying checkout:", error);
+      res.status(500).json({ error: "Failed to verify checkout" });
+    }
+  });
+
+  // ========================================================================
+  // STRIPE WEBHOOK
+  // ========================================================================
+
+  /**
+   * POST /api/webhook/stripe
+   * Handle Stripe webhook events
+   */
+  app.post("/api/webhook/stripe", async (req: Request, res: Response) => {
+    const signature = req.headers["stripe-signature"];
+
+    if (!signature || typeof signature !== "string") {
+      console.error("Missing Stripe signature header");
+      return res.status(400).json({ error: "Missing signature" });
+    }
+
+    // Get raw body (set by express.json verify function in index.ts)
+    const rawBody = (req as any).rawBody as Buffer;
+    if (!rawBody) {
+      console.error("Missing raw body for webhook");
+      return res.status(400).json({ error: "Missing raw body" });
+    }
+
+    const event = constructWebhookEvent(rawBody, signature);
+    if (!event) {
+      return res.status(400).json({ error: "Invalid webhook signature" });
+    }
+
+    console.log(`Stripe webhook received: ${event.type}`);
+
+    const result = await handleWebhookEvent(event);
+
+    // If payment completed, add to appropriate AWeber list
+    if (result.success && result.sessionId && result.type) {
+      const session = getSession(result.sessionId);
+      if (session?.userEmail && isAweberEnabled()) {
+        // Determine purchase type for email sequence
+        const purchaseType = result.type === "medal" ? "medal" :
+                            result.type === "candle" ? "candle" : "prayer";
+
+        // Get prayer text, tier, and payment ID for the AWeber custom fields
+        const aweberData: { name?: string; prayer?: string; tier?: string; stripePaymentId?: string } = {
+          name: session.userName || undefined,
+        };
+
+        // Include stripe_payment_id for all purchase types (paid, medal, candle)
+        if (result.paymentIntentId) {
+          aweberData.stripePaymentId = result.paymentIntentId; // pi_xxx
+        }
+        // Include prayer and tier for paid list only
+        if (purchaseType === "prayer") {
+          if (session.prayerText) {
+            aweberData.prayer = session.prayerText;
+          }
+          if (result.tier) {
+            aweberData.tier = result.tier; // hardship, full, or generous
+          }
+        }
+
+        addToCustomerList(session.userEmail, purchaseType, aweberData)
+          .catch((err) => console.error("AWeber customer add failed:", err));
+
+        // Update candle status in Google Sheet
+        if (purchaseType === "candle" && session.userEmail && isGoogleSheetsEnabled()) {
+          updateCandleStatus(session.userEmail)
+            .catch((err) => console.error("Google Sheets candle update failed:", err));
+        }
+      }
+
+      // Facebook CAPI Purchase event from webhook (no browser context)
+      if (isFacebookEnabled() && result.paymentIntentId) {
+        const fbPurchaseType = result.type === "medal" ? "medal" :
+                               result.type === "candle" ? "candle" : "prayer";
+        const webhookAmountMap: Record<string, number> = { prayer: 35, medal: 79, candle: 19 };
+        let fbAmount = webhookAmountMap[fbPurchaseType] || 35;
+        if (fbPurchaseType === "prayer" && result.tier) {
+          const tierAmounts: Record<string, number> = { hardship: 28, full: 35, generous: 55 };
+          fbAmount = tierAmounts[result.tier] || 35;
+        }
+        sendEvent({
+          eventName: "Purchase",
+          eventId: result.paymentIntentId,
+          email: session?.userEmail || undefined,
+          userName: session?.userName || undefined,
+          customData: { value: fbAmount, currency: "USD", content_type: "product", content_ids: [fbPurchaseType === "prayer" ? "prayer_petition" : `upsell_${fbPurchaseType}`] },
+        }).catch((err) => console.error("Facebook CAPI Purchase (webhook) failed:", err));
+      }
+    }
+
+    if (result.success) {
+      res.json({ received: true });
+    } else {
+      res.status(500).json({ error: "Webhook processing failed" });
     }
   });
 

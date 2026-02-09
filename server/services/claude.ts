@@ -36,6 +36,21 @@ export interface SessionContext {
   situationDetail: string | null;
   paymentStatus: "pending" | "completed" | "declined" | null;
   prayerSubPhase: PrayerSubPhase;
+  // The confirmed prayer text (for AWeber and other uses)
+  prayerText: string | null;
+  // Deduplication flags for Google Sheets logging
+  addedToAllLeads?: boolean;
+  addedToLourdesGrotto?: boolean;
+  // Stripe customer ID for one-click upsells
+  stripeCustomerId?: string | null;
+  // Shipping address for physical products
+  shippingName?: string | null;
+  shippingAddressLine1?: string | null;
+  shippingAddressLine2?: string | null;
+  shippingCity?: string | null;
+  shippingState?: string | null;
+  shippingPostalCode?: string | null;
+  shippingCountry?: string | null;
   flags: {
     userNameCaptured: boolean;
     nameCaptured: boolean;
@@ -753,23 +768,17 @@ ${context.flags.emailCaptured ? getPrayerIntentInstructions(intents?.prayerInten
 **Step 4: Prayer composition**
 - Ask: "Would you like to write the prayer in your own words, or would you like me to help you find the words?"
 - If USER WRITES: Receive it, affirm it: "That's a beautiful prayer. I'll carry those exact words to the Grotto." → Skip to Step 5b.
+- IMPORTANT: If user writes their own prayer, it must be under 500 characters. If it exceeds this, gently ask them to shorten it to 500 characters or less.
 - If USER NEEDS HELP: Compose TWO versions of the prayer:
 
 **Step 4a: First prayer (Simple version)**
-- Compose a heartfelt but concise prayer (40-50 words)
-- Present it: "Here's a heartfelt prayer from your heart:"
-- Show the prayer (COMPLETE, in ONE message)
-- Then PAUSE and ask: "Does this feel right to you? Or would you prefer a more detailed version?"
-- WAIT for user response before proceeding
-- Do NOT immediately offer the detailed version — let them respond first
+- Compose a heartfelt but concise prayer (40-50 words, under 300 characters)
+- Present it: "Here's a simple, heartfelt prayer from your heart:"
+- Show the prayer
+- Then offer: "I can also write a more detailed version that expands on your intentions. Would you like to see it?"
 
-**Step 4b: User responses after simple prayer:**
-- If user says "yes", "perfect", "that's good", "I like it" → Go to Step 5 (confirm prayer)
-- If user says "detailed", "more detailed", "yes show me detailed" → Show detailed version below
-- If user asks for modifications → Go to Step 4c
-
-**Step 4c: Second prayer (Detailed version) — only if user requests it**
-- Compose a more elaborate prayer (70-100 words) with:
+**Step 4b: Second prayer (Detailed version) — only if user says yes**
+- Compose a more elaborate prayer (70-100 words, under 600 characters) with:
   - More specific details about the situation
   - Additional petitions (strength for the user, guidance, peace)
   - Richer imagery
@@ -792,6 +801,8 @@ ${context.flags.emailCaptured ? getPrayerIntentInstructions(intents?.prayerInten
 - Affirm and confirm: "That's a beautiful prayer. Is this what you'd like me to carry to Lourdes?"
 
 ## PRAYER COMPOSITION — PERSONAL VOICE
+
+IMPORTANT: User-written prayers must be under 500 characters. Claude-composed detailed prayers can be up to 600 characters.
 
 Compose prayers in FIRST PERSON, as if the user is speaking directly to Mary.
 These are personal petitions, not formal announcements.
@@ -1349,7 +1360,18 @@ function parseClaudeResponse(raw: string): ClaudeResponse {
       throw new Error("No JSON found in response");
     }
 
-    const parsed = JSON.parse(jsonMatch[0]);
+    let jsonStr = jsonMatch[0];
+    let parsed;
+    try {
+      parsed = JSON.parse(jsonStr);
+    } catch {
+      // Claude sometimes includes literal newlines inside JSON string values (e.g., in prayers).
+      // Escape control characters within quoted strings so JSON.parse succeeds.
+      jsonStr = jsonStr.replace(/"(?:[^"\\]|\\.)*"/g, (match) =>
+        match.replace(/\n/g, "\\n").replace(/\r/g, "\\r").replace(/\t/g, "\\t")
+      );
+      parsed = JSON.parse(jsonStr);
+    }
 
     // Validate messages array
     if (
@@ -1370,9 +1392,11 @@ function parseClaudeResponse(raw: string): ClaudeResponse {
       messages,
       uiHint: parsed.ui_hint || "none",
       extracted: {
+        userName: parsed.extracted?.user_name || undefined,
         personName: parsed.extracted?.person_name || undefined,
         relationship: parsed.extracted?.relationship || undefined,
         situationSummary: parsed.extracted?.situation_summary || undefined,
+        userEmail: parsed.extracted?.user_email || undefined,
       },
       flags: {
         nameCaptured: parsed.flags?.name_captured || false,

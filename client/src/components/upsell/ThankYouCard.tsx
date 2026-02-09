@@ -46,7 +46,7 @@ const VARIANT_CONTENT: Record<
     headline: "Your Order is Confirmed",
     subtext: (name: string) => `A light will shine for ${name}`,
     productLabel: "Grotto Prayer Candle",
-    productImage: "/images/candle-grotto.png",
+    productImage: "/images/candle-grotto.jpg",
     price: "$19",
     steps: [
       "Your candle will be lit at the Grotto within 24-48 hours",
@@ -161,13 +161,13 @@ export default function ThankYouCard({
         )}
       </div>
 
-      {/* Sister Marie Message */}
+      {/* Messenger Marie Message */}
       <div className="px-6 py-5 border-b border-card-border bg-secondary/20">
         <div className="flex gap-3">
           <div className="w-12 h-12 rounded-full overflow-hidden border border-card-border flex-shrink-0">
             <img
               src={sisterMariePortrait}
-              alt="Sister Marie"
+              alt="Messenger Marie"
               className="w-full h-full object-cover"
             />
           </div>
@@ -176,7 +176,7 @@ export default function ThankYouCard({
               "{content.sisterMessage(displayName)}"
             </p>
             <p className="text-xs text-muted-foreground mt-2">
-              — Sister Marie
+              — Messenger Marie
             </p>
           </div>
         </div>
@@ -189,10 +189,10 @@ export default function ThankYouCard({
             Need Help?
           </p>
           <a
-            href="mailto:support@lourdes-healing.com"
+            href="mailto:support@messengersoflourdes.com"
             className="text-sm text-primary hover:underline"
           >
-            support@lourdes-healing.com
+            support@messengersoflourdes.com
           </a>
         </div>
         <Button

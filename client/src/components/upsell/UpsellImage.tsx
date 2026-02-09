@@ -24,7 +24,7 @@ const IMAGE_SOURCES: Record<string, { src: string; alt: string }> = {
     alt: "A woman wearing the Lourdes Healing Medal",
   },
   candle_grotto: {
-    src: "/images/candle-grotto.png",
+    src: "/images/candle-grotto.jpg",
     alt: "A hand lighting a candle at the Grotto of Lourdes",
   },
   certificate: {

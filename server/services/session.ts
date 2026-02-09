@@ -54,6 +54,7 @@ export async function createSession(): Promise<SessionContext> {
     situationDetail: null,
     paymentStatus: null,
     prayerSubPhase: "gathering_info",
+    prayerText: null,
     flags: {
       userNameCaptured: false,
       nameCaptured: false,
@@ -263,6 +264,9 @@ export async function savePrayerIntention(
 ): Promise<number | null> {
   const session = sessions.get(sessionId);
   if (!session) return null;
+
+  // Store prayerText on session for AWeber and other uses
+  session.prayerText = prayerText;
 
   if (!DB_ENABLED) {
     console.log("Database not enabled - prayer not persisted");

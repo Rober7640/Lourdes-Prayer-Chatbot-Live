@@ -1,12 +1,13 @@
 import { useEffect, useMemo, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
+import { Input } from "@/components/ui/input";
 import heroSky from "@/assets/images/sky-sanctuary-hero.png";
 import grottoMark from "@/assets/images/lourdes-grotto-mark.png";
 import sisterMariePortrait from "@/assets/images/sister-marie-portrait.png";
 import waterRipples from "@/assets/images/lourdes-water-ripples.png";
-import { ArrowRight, Sparkles } from "lucide-react";
-import { Link } from "wouter";
+import { ArrowRight, Sparkles, RotateCcw } from "lucide-react";
+import { Link, useLocation } from "wouter";
 
 type StatusState = "busy" | "available";
 
@@ -222,6 +223,93 @@ function Testimonial() {
   );
 }
 
+function ReturningUserSection() {
+  const [showEmailInput, setShowEmailInput] = useState(false);
+  const [email, setEmail] = useState("");
+  const [isChecking, setIsChecking] = useState(false);
+  const [message, setMessage] = useState<string | null>(null);
+  const [, setLocation] = useLocation();
+
+  async function handleCheckReturning() {
+    if (!email.trim()) return;
+
+    setIsChecking(true);
+    setMessage(null);
+
+    try {
+      const res = await fetch(`/api/chat/check-returning?email=${encodeURIComponent(email)}`);
+      const data = await res.json();
+
+      if (data.hasSession) {
+        // Redirect to chat with session
+        setLocation(`/chat?session=${data.sessionId}&returning=true`);
+      } else {
+        setMessage("No saved prayer found for this email. Start a new conversation below.");
+      }
+    } catch {
+      setMessage("Something went wrong. Please try again.");
+    } finally {
+      setIsChecking(false);
+    }
+  }
+
+  if (!showEmailInput) {
+    return (
+      <button
+        onClick={() => setShowEmailInput(true)}
+        className="inline-flex items-center gap-2 text-sm text-muted-foreground hover:text-foreground transition"
+        data-testid="link-returning-user"
+      >
+        <RotateCcw className="h-3.5 w-3.5" />
+        I've shared a prayer before
+      </button>
+    );
+  }
+
+  return (
+    <div className="mt-4 w-full max-w-md mx-auto">
+      <Card className="border-card-border bg-card/80 p-4 shadow-sm backdrop-blur">
+        <div className="text-sm font-medium text-foreground mb-3">
+          Enter your email to continue your prayer
+        </div>
+        <div className="flex gap-2">
+          <Input
+            type="email"
+            placeholder="Your email address"
+            value={email}
+            onChange={(e) => setEmail(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === "Enter") handleCheckReturning();
+            }}
+            className="h-10 rounded-lg"
+            disabled={isChecking}
+          />
+          <Button
+            onClick={handleCheckReturning}
+            disabled={!email.trim() || isChecking}
+            className="h-10 rounded-lg px-4"
+          >
+            {isChecking ? "..." : "Continue"}
+          </Button>
+        </div>
+        {message && (
+          <div className="mt-2 text-xs text-muted-foreground">{message}</div>
+        )}
+        <button
+          onClick={() => {
+            setShowEmailInput(false);
+            setEmail("");
+            setMessage(null);
+          }}
+          className="mt-2 text-xs text-muted-foreground hover:text-foreground"
+        >
+          Cancel
+        </button>
+      </Card>
+    </div>
+  );
+}
+
 function Footer() {
   return (
     <footer className="mx-auto mt-12 w-full max-w-2xl pb-10" data-testid="footer">
@@ -317,6 +405,9 @@ export default function LanderPage() {
               <div className="text-xs text-muted-foreground" data-testid="text-cta-duration">
                 Takes 3 minutes
               </div>
+              <div className="mt-2">
+                <ReturningUserSection />
+              </div>
             </div>
           </section>
 
@@ -372,19 +463,21 @@ export default function LanderPage() {
             </div>
 
             <div className="mt-5 flex justify-center">
-              <Button
-                size="lg"
-                disabled={!ready}
-                className={[
-                  "min-h-11 w-full max-w-md rounded-xl px-6",
-                  "shadow-md transition-all",
-                  !ready ? "opacity-60" : "hover:-translate-y-0.5",
-                ].join(" ")}
-                data-testid="button-talk-to-sister-marie-bottom"
-              >
-                Talk to Messenger Marie
-                <ArrowRight className="h-4 w-4" />
-              </Button>
+              <Link href="/chat">
+                <Button
+                  size="lg"
+                  disabled={!ready}
+                  className={[
+                    "min-h-11 w-full max-w-md rounded-xl px-6",
+                    "shadow-md transition-all",
+                    !ready ? "opacity-60" : "hover:-translate-y-0.5",
+                  ].join(" ")}
+                  data-testid="button-talk-to-sister-marie-bottom"
+                >
+                  Talk to Messenger Marie
+                  <ArrowRight className="h-4 w-4" />
+                </Button>
+              </Link>
             </div>
           </section>
 
