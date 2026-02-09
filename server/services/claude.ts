@@ -287,8 +287,8 @@ export function classifyPrayerIntent(message: string, subPhase: PrayerSubPhase):
   }
 
   // Context-aware defaults for short responses
-  if (subPhase === "awaiting_confirm" || subPhase === "simple_offered" || subPhase === "detailed_offered") {
-    // Short affirmative responses in confirmation context
+  if (subPhase === "awaiting_confirm") {
+    // Only treat "yes" as confirm when user is explicitly confirming their chosen prayer
     if (/^(ok|okay|sure|yep|yeah|yes|absolutely|definitely|please)\.?$/i.test(trimmed)) {
       return "confirm";
     }

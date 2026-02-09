@@ -45,7 +45,14 @@ async function getSheetsClient(): Promise<sheets_v4.Sheets> {
 
   if (credentialsJson) {
     // Railway / cloud: credentials passed as JSON string in env var
-    const credentials = JSON.parse(credentialsJson);
+    // Some platforms convert \n escape sequences to actual newlines in env vars,
+    // which breaks JSON.parse (especially in the private_key field).
+    let credentials;
+    try {
+      credentials = JSON.parse(credentialsJson);
+    } catch {
+      credentials = JSON.parse(credentialsJson.replace(/\n/g, "\\n"));
+    }
     auth = new google.auth.GoogleAuth({
       credentials,
       scopes: ["https://www.googleapis.com/auth/spreadsheets"],
