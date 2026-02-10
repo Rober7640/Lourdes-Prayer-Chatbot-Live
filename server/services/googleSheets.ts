@@ -30,6 +30,45 @@ export function isGoogleSheetsEnabled(): boolean {
   return !!getSpreadsheetId() && !!(getCredentialsPath() || getCredentialsJson());
 }
 
+/**
+ * Normalize a PEM private key that may have been mangled by env-var transport.
+ * Strips all whitespace/escape artifacts, then reconstructs proper PEM with
+ * 64-char base64 lines — the format OpenSSL 3.x requires.
+ */
+function normalizePemKey(raw: string): string {
+  // 1. Replace every escaped-newline variant with a real newline
+  let key = raw
+    .replace(/\\\\n/g, "\n")   // double-escaped \\n
+    .replace(/\\n/g, "\n")     // single-escaped \n
+    .replace(/\\r/g, "")       // escaped \r
+    .replace(/\r/g, "");       // real \r (Windows line endings)
+
+  // 2. Collapse extra whitespace inside PEM header/footer markers
+  //    (e.g. "-----END   PRIVATE KEY-----" → "-----END PRIVATE KEY-----")
+  key = key.replace(/-----(BEGIN|END)\s+((?:RSA\s+)?PRIVATE\s+KEY)-----/g, "-----$1 $2-----");
+  key = key.replace(/RSA\s+PRIVATE\s+KEY/g, "RSA PRIVATE KEY");
+  key = key.replace(/PRIVATE\s+KEY/g, "PRIVATE KEY");
+
+  // 3. Extract PEM type and base64 payload
+  const match = key.match(
+    /-----BEGIN ((?:RSA )?PRIVATE KEY)-----(.+?)-----END ((?:RSA )?PRIVATE KEY)-----/s,
+  );
+  if (!match) {
+    // Can't parse — return best-effort replacement and let googleapis surface
+    // a clearer error if it still fails.
+    console.error("Google Sheets: private_key does not look like a PEM key");
+    return key;
+  }
+
+  const type = match[1];
+  // Strip every non-base64 character from the payload
+  const base64 = match[2].replace(/[^A-Za-z0-9+/=]/g, "");
+
+  // 4. Re-wrap at 64 characters per line (PEM standard)
+  const lines = base64.match(/.{1,64}/g) || [];
+  return `-----BEGIN ${type}-----\n${lines.join("\n")}\n-----END ${type}-----\n`;
+}
+
 // Lazy-initialized Google Sheets API client
 let sheetsClient: sheets_v4.Sheets | null = null;
 
@@ -53,10 +92,11 @@ async function getSheetsClient(): Promise<sheets_v4.Sheets> {
     } catch {
       credentials = JSON.parse(credentialsJson.replace(/\n/g, "\\n"));
     }
-    // Ensure private_key has actual newlines — env vars often store them as
-    // literal "\n" text which OpenSSL cannot parse as a PEM key.
+    // Ensure private_key is a valid PEM string that OpenSSL 3.x can parse.
+    // Environment variables mangle the key in many ways: literal "\n" text,
+    // double-escaped "\\n", missing newlines entirely, extra whitespace, etc.
     if (credentials.private_key) {
-      credentials.private_key = credentials.private_key.replace(/\\n/g, "\n");
+      credentials.private_key = normalizePemKey(credentials.private_key);
     }
     auth = new google.auth.GoogleAuth({
       credentials,
