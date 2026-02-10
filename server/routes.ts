@@ -80,7 +80,6 @@ import {
   appendToAllLeads,
   appendToLourdesGrotto,
   updateCandleStatus,
-  updatePendantStatus,
 } from "./services/googleSheets";
 import {
   isFacebookEnabled,
@@ -1681,12 +1680,6 @@ export async function registerRoutes(
             }).catch((err) => console.error("AWeber pendant upsell list add failed:", err));
           }
 
-          // Update pendant status in Google Sheet
-          if (originalSession.userEmail && isGoogleSheetsEnabled()) {
-            updatePendantStatus(originalSession.userEmail)
-              .catch((err) => console.error("Google Sheets pendant update failed:", err));
-          }
-
           // Facebook CAPI Purchase event
           if (isFacebookEnabled() && result.paymentIntentId) {
             const fbData = extractFbRequestData(req);
@@ -1976,12 +1969,6 @@ export async function registerRoutes(
         if (upsellType === "candle" && session.userEmail && isGoogleSheetsEnabled()) {
           updateCandleStatus(session.userEmail)
             .catch((err) => console.error("Google Sheets candle update failed:", err));
-        }
-
-        // Update pendant status in Google Sheet
-        if (upsellType === "pendant" && session.userEmail && isGoogleSheetsEnabled()) {
-          updatePendantStatus(session.userEmail)
-            .catch((err) => console.error("Google Sheets pendant update failed:", err));
         }
 
         // Facebook CAPI Purchase event for one-click upsell
@@ -2363,11 +2350,6 @@ export async function registerRoutes(
             .catch((err) => console.error("Google Sheets candle update failed:", err));
         }
 
-        // Update pendant status in Google Sheet
-        if (purchaseType === "pendant" && session.userEmail && isGoogleSheetsEnabled()) {
-          updatePendantStatus(session.userEmail)
-            .catch((err) => console.error("Google Sheets pendant update failed:", err));
-        }
       }
 
       // Facebook CAPI Purchase event from webhook (no browser context)
