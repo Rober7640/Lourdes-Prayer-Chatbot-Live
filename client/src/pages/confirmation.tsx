@@ -57,8 +57,7 @@ type UpsellImage =
   | "testimonial_medal"
   | "testimonial_medal_self"
   | "candle_grotto"
-  | "michael_portrait"
-  | "pendant_front"
+  | "michael_pendant"
   | "testimonial_michael"
   | "testimonial_michael_self"
   | null;

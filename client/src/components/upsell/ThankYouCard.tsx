@@ -78,7 +78,7 @@ const VARIANT_CONTENT: Record<
     headline: "Your Order is Confirmed",
     subtext: () => "A protector is on the way",
     productLabel: "Archangel Michael Pendant",
-    productImage: "/images/pendant-front.jpg",
+    productImage: "/images/michael-pendant.jpg",
     price: "$49",
     steps: [
       "Pendant prepared and shipped",

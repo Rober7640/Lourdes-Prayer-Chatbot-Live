@@ -101,7 +101,7 @@ function getTransition2Messages(ctx: UpsellSessionContext, outcome: Upsell1Outco
 }
 
 // ============================================================================
-// MICHAEL_STORY — 6 msgs + michael_portrait after msg 1
+// MICHAEL_STORY — 6 msgs + michael_pendant after msg 1
 // ============================================================================
 
 function getMichaelStoryMessages(ctx: UpsellSessionContext): ScriptedMessage2 {
@@ -123,14 +123,14 @@ function getMichaelStoryMessages(ctx: UpsellSessionContext): ScriptedMessage2 {
 
   return {
     messages,
-    image: "michael_portrait",
+    image: "michael_pendant",
     imageAfterMessage: 1,
     uiHint: "none",
   };
 }
 
 // ============================================================================
-// SHOW_PENDANT — 3 msgs + pendant_front after msg 1
+// SHOW_PENDANT — 3 msgs + michael_pendant after msg 1
 // ============================================================================
 
 function getShowPendantMessages(): ScriptedMessage2 {
@@ -140,7 +140,7 @@ function getShowPendantMessages(): ScriptedMessage2 {
       "Michael in full armor — sword raised, wings spread. Ready.",
       "On the back — the St. Michael Prayer. The same prayer Catholics have spoken for over a hundred years.",
     ],
-    image: "pendant_front",
+    image: "michael_pendant",
     imageAfterMessage: 1,
     uiHint: "none",
   };
