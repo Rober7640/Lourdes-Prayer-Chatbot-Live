@@ -36,6 +36,9 @@ import {
   addUpsellAssistantMessages,
   setPurchaseType,
   setUpsellPhase,
+  setUpsell2Phase,
+  setUpsell2PurchaseType,
+  type Upsell1Outcome,
 } from "./services/upsell-session";
 import {
   getInitialUpsellMessages,
@@ -44,6 +47,12 @@ import {
   handleUpsellMessage,
   type UpsellAction,
 } from "./services/claude-upsell";
+import {
+  startUpsell2,
+  advanceUpsell2Phase,
+  handleUpsell2Action,
+  type Upsell2Action,
+} from "./services/claude-upsell2";
 import {
   createCheckoutSession,
   createUpsellCheckoutSession,
@@ -71,6 +80,7 @@ import {
   appendToAllLeads,
   appendToLourdesGrotto,
   updateCandleStatus,
+  updatePendantStatus,
 } from "./services/googleSheets";
 import {
   isFacebookEnabled,
@@ -1432,6 +1442,311 @@ export async function registerRoutes(
     }
   });
 
+  // ========================================================================
+  // UPSELL 2 API ENDPOINTS
+  // ========================================================================
+
+  /**
+   * POST /api/upsell2/start
+   * Initialize Upsell 2 flow after Upsell 1 completes
+   */
+  app.post("/api/upsell2/start", async (req, res) => {
+    try {
+      const { upsellSessionId, upsell1Outcome } = req.body;
+
+      if (!upsellSessionId || !upsell1Outcome) {
+        return res.status(400).json({ error: "Missing upsellSessionId or upsell1Outcome" });
+      }
+
+      const validOutcomes: Upsell1Outcome[] = ["medal", "candle", "declined"];
+      if (!validOutcomes.includes(upsell1Outcome)) {
+        return res.status(400).json({ error: "Invalid upsell1Outcome" });
+      }
+
+      const session = getUpsellSession(upsellSessionId);
+      if (!session) {
+        return res.status(404).json({ error: "Upsell session not found" });
+      }
+
+      const response = startUpsell2(session, upsell1Outcome);
+
+      addUpsellAssistantMessages(upsellSessionId, response.messages);
+
+      res.json({
+        messages: response.messages,
+        image: response.image,
+        imageAfterMessage: response.imageAfterMessage,
+        uiHint: response.uiHint,
+        phase: response.phase,
+        upsell2Flags: response.upsell2Flags,
+      });
+    } catch (error) {
+      console.error("Error starting upsell 2:", error);
+      res.status(500).json({ error: "Failed to start upsell 2" });
+    }
+  });
+
+  /**
+   * POST /api/upsell2/advance
+   * Auto-advance Upsell 2 to next phase
+   */
+  app.post("/api/upsell2/advance", async (req, res) => {
+    try {
+      const { upsellSessionId } = req.body;
+
+      if (!upsellSessionId) {
+        return res.status(400).json({ error: "Missing upsellSessionId" });
+      }
+
+      const session = getUpsellSession(upsellSessionId);
+      if (!session) {
+        return res.status(404).json({ error: "Upsell session not found" });
+      }
+
+      const response = advanceUpsell2Phase(session);
+
+      if (response.messages.length > 0) {
+        addUpsellAssistantMessages(upsellSessionId, response.messages);
+      }
+
+      res.json({
+        messages: response.messages,
+        image: response.image,
+        imageAfterMessage: response.imageAfterMessage,
+        uiHint: response.uiHint,
+        phase: response.phase,
+        upsell2Flags: response.upsell2Flags,
+      });
+    } catch (error) {
+      console.error("Error advancing upsell 2 phase:", error);
+      res.status(500).json({ error: "Failed to advance upsell 2 phase" });
+    }
+  });
+
+  /**
+   * POST /api/upsell2/action
+   * Handle accept/decline pendant
+   */
+  app.post("/api/upsell2/action", async (req, res) => {
+    try {
+      const { upsellSessionId, action } = req.body;
+
+      if (!upsellSessionId || !action) {
+        return res.status(400).json({ error: "Missing upsellSessionId or action" });
+      }
+
+      const validActions: Upsell2Action[] = ["accept_pendant", "decline_pendant"];
+      if (!validActions.includes(action)) {
+        return res.status(400).json({ error: "Invalid action" });
+      }
+
+      const session = getUpsellSession(upsellSessionId);
+      if (!session) {
+        return res.status(404).json({ error: "Upsell session not found" });
+      }
+
+      addToUpsellHistory(upsellSessionId, "user", `[Action: ${action}]`);
+
+      const response = handleUpsell2Action(session, action as Upsell2Action);
+
+      addUpsellAssistantMessages(upsellSessionId, response.messages);
+
+      res.json({
+        messages: response.messages,
+        image: response.image,
+        imageAfterMessage: response.imageAfterMessage,
+        uiHint: response.uiHint,
+        phase: response.phase,
+        upsell2Flags: response.upsell2Flags,
+      });
+    } catch (error) {
+      console.error("Error handling upsell 2 action:", error);
+      res.status(500).json({ error: "Failed to process upsell 2 action" });
+    }
+  });
+
+  /**
+   * POST /api/upsell2/pendant
+   * Process pendant purchase with optional shipping
+   */
+  app.post("/api/upsell2/pendant", async (req, res) => {
+    try {
+      const { upsellSessionId, shipping } = req.body;
+
+      if (!upsellSessionId) {
+        return res.status(400).json({ error: "Missing upsellSessionId" });
+      }
+
+      const session = getUpsellSession(upsellSessionId);
+      if (!session) {
+        return res.status(404).json({ error: "Upsell session not found" });
+      }
+
+      const originalSessionId = session.sessionId;
+      const originalSession = getSession(originalSessionId);
+      if (!originalSession) {
+        return res.status(404).json({ error: "Original session not found" });
+      }
+
+      // Determine shipping data — reuse from session or from body
+      let shippingData: { name: string; address1: string; address2?: string; city: string; state?: string; postal: string; country: string };
+
+      if (session.upsell2Flags.shippingAlreadyCollected) {
+        // Reuse shipping from original session (medal purchase)
+        if (!originalSession.shippingName || !originalSession.shippingAddressLine1) {
+          return res.status(400).json({ error: "Shipping data not found in session" });
+        }
+        shippingData = {
+          name: originalSession.shippingName,
+          address1: originalSession.shippingAddressLine1,
+          address2: originalSession.shippingAddressLine2 || undefined,
+          city: originalSession.shippingCity || "",
+          state: originalSession.shippingState || undefined,
+          postal: originalSession.shippingPostalCode || "",
+          country: originalSession.shippingCountry || "",
+        };
+      } else {
+        // Need shipping from body
+        if (!shipping) {
+          return res.status(400).json({ error: "Missing shipping data" });
+        }
+        const requiredFields = ["name", "address1", "city", "postal", "country"];
+        for (const field of requiredFields) {
+          if (!shipping[field]) {
+            return res.status(400).json({ error: `Missing shipping ${field}` });
+          }
+        }
+        shippingData = shipping;
+      }
+
+      // Try one-click charge
+      if (isStripeEnabled()) {
+        const result = await chargeOneClickUpsell({ sessionId: originalSessionId, upsellType: "pendant" });
+
+        if (result.success) {
+          console.log(`Pendant one-click charge successful: ${result.paymentIntentId}`);
+
+          // Save shipping if it's new (not already collected from medal)
+          if (!session.upsell2Flags.shippingAlreadyCollected) {
+            updateSession(originalSessionId, {
+              shippingName: shippingData.name,
+              shippingAddressLine1: shippingData.address1,
+              shippingAddressLine2: shippingData.address2 || null,
+              shippingCity: shippingData.city,
+              shippingState: shippingData.state || null,
+              shippingPostalCode: shippingData.postal,
+              shippingCountry: shippingData.country,
+            });
+
+            const DB_ENABLED = !!process.env.DATABASE_URL;
+            if (DB_ENABLED) {
+              dbStorage.updateSession(originalSessionId, {
+                shippingName: shippingData.name,
+                shippingAddressLine1: shippingData.address1,
+                shippingAddressLine2: shippingData.address2 || null,
+                shippingCity: shippingData.city,
+                shippingState: shippingData.state || null,
+                shippingPostalCode: shippingData.postal,
+                shippingCountry: shippingData.country,
+              }).catch((err) => console.error("Failed to save pendant shipping to DB:", err));
+            }
+          }
+
+          // Update Stripe payment intent with shipping address
+          if (result.paymentIntentId) {
+            updatePaymentIntentShipping(result.paymentIntentId, {
+              name: shippingData.name,
+              addressLine1: shippingData.address1,
+              addressLine2: shippingData.address2 || null,
+              city: shippingData.city,
+              state: shippingData.state || null,
+              postalCode: shippingData.postal,
+              country: shippingData.country,
+            }).catch((err) => console.error("Failed to update Stripe shipping for pendant:", err));
+          }
+
+          // Add to AWeber upsell list
+          if (originalSession.userEmail && isAweberEnabled()) {
+            addToCustomerList(originalSession.userEmail, "pendant", {
+              name: originalSession.userName || undefined,
+              stripePaymentId: result.paymentIntentId || undefined,
+            }).catch((err) => console.error("AWeber pendant upsell list add failed:", err));
+          }
+
+          // Update pendant status in Google Sheet
+          if (originalSession.userEmail && isGoogleSheetsEnabled()) {
+            updatePendantStatus(originalSession.userEmail)
+              .catch((err) => console.error("Google Sheets pendant update failed:", err));
+          }
+
+          // Facebook CAPI Purchase event
+          if (isFacebookEnabled() && result.paymentIntentId) {
+            const fbData = extractFbRequestData(req);
+            sendEvent({
+              eventName: "Purchase",
+              eventId: result.paymentIntentId,
+              email: originalSession.userEmail || undefined,
+              userName: originalSession.userName || undefined,
+              ...fbData,
+              customData: { value: 49, currency: "USD", content_type: "product", content_ids: ["upsell_pendant"] },
+            }).catch((err) => console.error("Facebook CAPI Purchase (pendant) failed:", err));
+          }
+
+          // Set purchase type and phase
+          setUpsell2PurchaseType(upsellSessionId, "pendant");
+          setUpsell2Phase(upsellSessionId, "complete_2");
+
+          return res.json({
+            success: true,
+            oneClick: true,
+            uiHint: "show_thank_you_pendant",
+            phase: "complete_2",
+          });
+        }
+
+        // One-click failed — create Stripe checkout session as fallback
+        console.log("Pendant one-click failed, creating checkout fallback");
+        const baseUrl = `${req.protocol}://${req.get("host")}`;
+        const successUrl = `${baseUrl}/confirmation/${originalSessionId}?upsell=pendant`;
+        const cancelUrl = `${baseUrl}/confirmation/${originalSessionId}`;
+
+        const checkoutResult = await createUpsellCheckoutSession({
+          sessionId: originalSessionId,
+          upsellType: "pendant",
+          email: originalSession.userEmail!,
+          successUrl,
+          cancelUrl,
+          requiresShipping: true,
+        });
+
+        if (!checkoutResult) {
+          return res.status(500).json({ error: "Failed to create checkout session" });
+        }
+
+        return res.json({
+          success: false,
+          oneClick: false,
+          requiresCheckout: true,
+          checkoutUrl: checkoutResult.url,
+        });
+      }
+
+      // Stripe not enabled — just log
+      console.log("Stripe not enabled, pendant order logged only:", { upsellSessionId, shippingData });
+      setUpsell2PurchaseType(upsellSessionId, "pendant");
+      setUpsell2Phase(upsellSessionId, "complete_2");
+
+      res.json({
+        success: true,
+        uiHint: "show_thank_you_pendant",
+        phase: "complete_2",
+      });
+    } catch (error) {
+      console.error("Error processing pendant order:", error);
+      res.status(500).json({ error: "Failed to process pendant order" });
+    }
+  });
+
   /**
    * GET /api/chat/check-returning
    * Check if user has a saved session (by email)
@@ -1558,7 +1873,7 @@ export async function registerRoutes(
       }
 
       // Validate upsell type
-      const validTypes: UpsellType[] = ["medal", "candle"];
+      const validTypes: UpsellType[] = ["medal", "candle", "pendant"];
       if (!validTypes.includes(upsellType)) {
         return res.status(400).json({ error: "Invalid upsell type" });
       }
@@ -1587,7 +1902,7 @@ export async function registerRoutes(
         email: session.userEmail,
         successUrl,
         cancelUrl,
-        requiresShipping: upsellType === "medal",
+        requiresShipping: upsellType === "medal" || upsellType === "pendant",
       });
 
       if (!result) {
@@ -1616,7 +1931,7 @@ export async function registerRoutes(
         return res.status(400).json({ error: "Missing sessionId or upsellType" });
       }
 
-      const validTypes: UpsellType[] = ["medal", "candle"];
+      const validTypes: UpsellType[] = ["medal", "candle", "pendant"];
       if (!validTypes.includes(upsellType)) {
         return res.status(400).json({ error: "Invalid upsell type" });
       }
@@ -1655,10 +1970,16 @@ export async function registerRoutes(
             .catch((err) => console.error("Google Sheets candle update failed:", err));
         }
 
+        // Update pendant status in Google Sheet
+        if (upsellType === "pendant" && session.userEmail && isGoogleSheetsEnabled()) {
+          updatePendantStatus(session.userEmail)
+            .catch((err) => console.error("Google Sheets pendant update failed:", err));
+        }
+
         // Facebook CAPI Purchase event for one-click upsell
         if (isFacebookEnabled() && result.paymentIntentId) {
           const fbData = extractFbRequestData(req);
-          const upsellAmounts: Record<string, number> = { medal: 79, candle: 19 };
+          const upsellAmounts: Record<string, number> = { medal: 79, candle: 19, pendant: 49 };
           sendEvent({
             eventName: "Purchase",
             eventId: result.paymentIntentId,
@@ -1673,8 +1994,8 @@ export async function registerRoutes(
           success: true,
           oneClick: true,
           paymentIntentId: result.paymentIntentId,
-          // For medal, frontend should show shipping form
-          requiresShipping: upsellType === "medal",
+          // For medal/pendant, frontend should show shipping form
+          requiresShipping: upsellType === "medal" || upsellType === "pendant",
         });
       }
 
@@ -1690,7 +2011,7 @@ export async function registerRoutes(
         email: session.userEmail,
         successUrl,
         cancelUrl,
-        requiresShipping: upsellType === "medal",
+        requiresShipping: upsellType === "medal" || upsellType === "pendant",
       });
 
       if (!checkoutResult) {
@@ -2003,7 +2324,8 @@ export async function registerRoutes(
       if (session?.userEmail && isAweberEnabled()) {
         // Determine purchase type for email sequence
         const purchaseType = result.type === "medal" ? "medal" :
-                            result.type === "candle" ? "candle" : "prayer";
+                            result.type === "candle" ? "candle" :
+                            result.type === "pendant" ? "pendant" : "prayer";
 
         // Get prayer text, tier, and payment ID for the AWeber custom fields
         const aweberData: { name?: string; prayer?: string; tier?: string; stripePaymentId?: string } = {
@@ -2032,13 +2354,20 @@ export async function registerRoutes(
           updateCandleStatus(session.userEmail)
             .catch((err) => console.error("Google Sheets candle update failed:", err));
         }
+
+        // Update pendant status in Google Sheet
+        if (purchaseType === "pendant" && session.userEmail && isGoogleSheetsEnabled()) {
+          updatePendantStatus(session.userEmail)
+            .catch((err) => console.error("Google Sheets pendant update failed:", err));
+        }
       }
 
       // Facebook CAPI Purchase event from webhook (no browser context)
       if (isFacebookEnabled() && result.paymentIntentId) {
         const fbPurchaseType = result.type === "medal" ? "medal" :
-                               result.type === "candle" ? "candle" : "prayer";
-        const webhookAmountMap: Record<string, number> = { prayer: 35, medal: 79, candle: 19 };
+                               result.type === "candle" ? "candle" :
+                               result.type === "pendant" ? "pendant" : "prayer";
+        const webhookAmountMap: Record<string, number> = { prayer: 35, medal: 79, candle: 19, pendant: 49 };
         let fbAmount = webhookAmountMap[fbPurchaseType] || 35;
         if (fbPurchaseType === "prayer" && result.tier) {
           const tierAmounts: Record<string, number> = { hardship: 28, full: 35, generous: 55 };

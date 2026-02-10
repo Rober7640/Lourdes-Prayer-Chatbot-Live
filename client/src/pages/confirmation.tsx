@@ -23,6 +23,7 @@ import UpsellImage from "@/components/upsell/UpsellImage";
 import ContinueOrGoButtons from "@/components/upsell/ContinueOrGoButtons";
 import MedalOfferCard from "@/components/upsell/MedalOfferCard";
 import CandleOfferCard from "@/components/upsell/CandleOfferCard";
+import PendantOfferCard from "@/components/upsell/PendantOfferCard";
 import ShippingForm, { type ShippingData } from "@/components/upsell/ShippingForm";
 import ThankYouCard from "@/components/upsell/ThankYouCard";
 
@@ -42,7 +43,12 @@ type UpsellUiHint =
   | "show_shipping_form"
   | "show_thank_you_prayer"
   | "show_thank_you_candle"
-  | "show_thank_you_medal";
+  | "show_thank_you_medal"
+  | "show_pendant_offer"
+  | "show_pendant_offer_self"
+  | "show_pendant_shipping_form"
+  | "show_thank_you_pendant"
+  | "show_thank_you_close";
 
 type UpsellImage =
   | "medal_front"
@@ -51,9 +57,15 @@ type UpsellImage =
   | "testimonial_medal"
   | "testimonial_medal_self"
   | "candle_grotto"
+  | "michael_portrait"
+  | "pendant_front"
+  | "testimonial_michael"
+  | "testimonial_michael_self"
   | null;
 
-type ThankYouVariant = "prayer" | "candle" | "medal";
+type ThankYouVariant = "prayer" | "candle" | "medal" | "pendant" | "close";
+
+type Upsell1Outcome = "medal" | "candle" | "declined";
 
 type ChatItem =
   | { id: string; role: Role; kind: "text"; text: string }
@@ -63,6 +75,8 @@ type ChatItem =
   | { id: string; role: "sm"; kind: "medal_offer" }
   | { id: string; role: "sm"; kind: "candle_offer" }
   | { id: string; role: "sm"; kind: "shipping_form" }
+  | { id: string; role: "sm"; kind: "pendant_offer" }
+  | { id: string; role: "sm"; kind: "pendant_shipping_form" }
   | { id: string; role: "sm"; kind: "thank_you"; variant: ThankYouVariant };
 
 interface UpsellFlags {
@@ -162,6 +176,10 @@ export default function ConfirmationPage() {
   const [showThinkingDots, setShowThinkingDots] = useState(false);
   const [pendingImage, setPendingImage] = useState<UpsellImage>(null);
   const [pendingUiHint, setPendingUiHint] = useState<UpsellUiHint>("none");
+
+  // Upsell 2 state
+  const [upsell2Phase, setUpsell2Phase] = useState<string>("not_started");
+  const [upsell1Outcome, setUpsell1Outcome] = useState<Upsell1Outcome | null>(null);
 
   // Refs
   const isMountedRef = useRef(true);
@@ -316,6 +334,26 @@ export default function ConfirmationPage() {
             ...prev,
             { id: uid("sm"), role: "sm", kind: "thank_you", variant: "medal" },
           ]);
+        } else if (uiHint === "show_pendant_offer" || uiHint === "show_pendant_offer_self") {
+          setItems((prev) => [
+            ...prev,
+            { id: uid("sm"), role: "sm", kind: "pendant_offer" },
+          ]);
+        } else if (uiHint === "show_pendant_shipping_form") {
+          setItems((prev) => [
+            ...prev,
+            { id: uid("sm"), role: "sm", kind: "pendant_shipping_form" },
+          ]);
+        } else if (uiHint === "show_thank_you_pendant") {
+          setItems((prev) => [
+            ...prev,
+            { id: uid("sm"), role: "sm", kind: "thank_you", variant: "pendant" },
+          ]);
+        } else if (uiHint === "show_thank_you_close") {
+          setItems((prev) => [
+            ...prev,
+            { id: uid("sm"), role: "sm", kind: "thank_you", variant: "close" },
+          ]);
         }
       }
 
@@ -395,7 +433,7 @@ export default function ConfirmationPage() {
     loadConfirmation();
   }, [sessionId, renderMessages]);
 
-  // Handle action button clicks
+  // Handle action button clicks (Upsell 1)
   async function handleAction(action: string) {
     if (!upsellSessionId || isTyping) return;
 
@@ -423,9 +461,23 @@ export default function ConfirmationPage() {
       setFlags(data.flags);
       setShowThinkingDots(false);
 
-      // For candle acceptance, process payment before showing thank-you
+      // For candle acceptance, process payment then start Upsell 2
       if (action === "accept_candle") {
         await processCandlePayment();
+        return;
+      }
+
+      // For "go" (early exit), show prayer thank-you and skip Upsell 2
+      if (action === "go") {
+        await renderMessages(data.messages, data.image, data.uiHint, data.imageAfterMessage);
+        return;
+      }
+
+      // For decline_candle: skip the prayer thank-you, start Upsell 2 instead
+      if (action === "decline_candle") {
+        // Don't render the default decline messages/thank-you
+        // Go straight to Upsell 2
+        await startUpsell2Flow("declined");
         return;
       }
 
@@ -472,7 +524,7 @@ export default function ConfirmationPage() {
         return;
       }
 
-      // One-click success — show thank you card
+      // One-click success — show thank you card, then start Upsell 2
       if (data.uiHint === "show_thank_you_candle") {
         setItems((prev) => [
           ...prev,
@@ -480,7 +532,8 @@ export default function ConfirmationPage() {
         ]);
       }
 
-      setPhase("complete");
+      // Start Upsell 2 after candle purchase
+      await startUpsell2Flow("candle");
     } catch (err) {
       console.error("Candle payment error:", err);
       setShowThinkingDots(false);
@@ -529,7 +582,7 @@ export default function ConfirmationPage() {
     }
   }
 
-  // Handle shipping form submission
+  // Handle shipping form submission (medal)
   async function handleShippingSubmit(shipping: ShippingData) {
     if (!upsellSessionId || isTyping) return;
 
@@ -562,7 +615,8 @@ export default function ConfirmationPage() {
         ]);
       }
 
-      setPhase("complete");
+      // Start Upsell 2 after medal purchase (shipping already collected)
+      await startUpsell2Flow("medal");
     } catch (err) {
       console.error("Shipping submit error:", err);
       await renderMessages(
@@ -572,6 +626,180 @@ export default function ConfirmationPage() {
         undefined
       );
     }
+  }
+
+  // ========================================================================
+  // UPSELL 2 FUNCTIONS
+  // ========================================================================
+
+  // Start Upsell 2 flow after Upsell 1 completes
+  async function startUpsell2Flow(outcome: Upsell1Outcome) {
+    if (!upsellSessionId) return;
+
+    try {
+      setUpsell1Outcome(outcome);
+
+      // Small delay before starting Upsell 2
+      await sleep(1500);
+      if (!isMountedRef.current) return;
+
+      const res = await fetch("/api/upsell2/start", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ upsellSessionId, upsell1Outcome: outcome }),
+      });
+
+      if (!res.ok) {
+        throw new Error("Failed to start upsell 2");
+      }
+
+      const data = await res.json();
+      setUpsell2Phase(data.phase);
+
+      await renderMessages(data.messages, data.image, data.uiHint, data.imageAfterMessage);
+
+      // Auto-advance if uiHint is "none"
+      if (data.uiHint === "none" && data.phase !== "complete_2" && data.phase !== "the_ask_2") {
+        await advanceUpsell2();
+      }
+    } catch (err) {
+      console.error("Upsell 2 start error:", err);
+      // Silently fail — user already has their Upsell 1 result
+    }
+  }
+
+  // Auto-advance Upsell 2 to next phase
+  async function advanceUpsell2() {
+    if (!upsellSessionId) return;
+
+    try {
+      await sleep(800);
+      if (!isMountedRef.current) return;
+
+      const res = await fetch("/api/upsell2/advance", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ upsellSessionId }),
+      });
+
+      if (!res.ok) {
+        throw new Error("Failed to advance upsell 2 phase");
+      }
+
+      const data = await res.json();
+
+      if (data.messages && data.messages.length > 0) {
+        setUpsell2Phase(data.phase);
+        await renderMessages(data.messages, data.image, data.uiHint, data.imageAfterMessage);
+
+        // Continue auto-advancing if appropriate
+        if (data.uiHint === "none" && data.phase !== "complete_2" && data.phase !== "the_ask_2") {
+          await advanceUpsell2();
+        }
+      }
+    } catch (err) {
+      console.error("Upsell 2 advance error:", err);
+    }
+  }
+
+  // Handle Upsell 2 actions (accept/decline pendant)
+  async function handleUpsell2Action(action: "accept_pendant" | "decline_pendant") {
+    if (!upsellSessionId || isTyping) return;
+
+    // Remove pendant offer card
+    setItems((prev) => prev.filter((i) => i.kind !== "pendant_offer"));
+
+    try {
+      setShowThinkingDots(true);
+      const res = await fetch("/api/upsell2/action", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ upsellSessionId, action }),
+      });
+
+      if (!res.ok) {
+        throw new Error("Failed to process upsell 2 action");
+      }
+
+      const data = await res.json();
+      setUpsell2Phase(data.phase);
+      setShowThinkingDots(false);
+
+      // For accept_pendant with shipping already collected, process payment immediately
+      if (action === "accept_pendant" && data.uiHint === "show_thank_you_pendant") {
+        await renderMessages(data.messages, data.image, "none", data.imageAfterMessage);
+        await processPendantPayment();
+        return;
+      }
+
+      await renderMessages(data.messages, data.image, data.uiHint, data.imageAfterMessage);
+    } catch (err) {
+      console.error("Upsell 2 action error:", err);
+      setShowThinkingDots(false);
+      await renderMessages(
+        ["I apologize — something went wrong. Please try again."],
+        null,
+        "none",
+        undefined
+      );
+    }
+  }
+
+  // Process pendant payment (one-click or checkout fallback)
+  async function processPendantPayment(shipping?: ShippingData) {
+    if (!upsellSessionId) return;
+
+    try {
+      setShowThinkingDots(true);
+      const res = await fetch("/api/upsell2/pendant", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          upsellSessionId,
+          ...(shipping ? { shipping } : {}),
+        }),
+      });
+
+      if (!res.ok) {
+        throw new Error("Failed to process pendant payment");
+      }
+
+      const data = await res.json();
+      setShowThinkingDots(false);
+
+      // If one-click failed and checkout is required, redirect to Stripe
+      if (data.requiresCheckout && data.checkoutUrl) {
+        window.location.href = data.checkoutUrl;
+        return;
+      }
+
+      // One-click success — remove pendant shipping form and show thank you
+      setItems((prev) => prev.filter((i) => i.kind !== "pendant_shipping_form"));
+
+      if (data.uiHint === "show_thank_you_pendant") {
+        setItems((prev) => [
+          ...prev,
+          { id: uid("sm"), role: "sm", kind: "thank_you", variant: "pendant" as ThankYouVariant },
+        ]);
+      }
+
+      setUpsell2Phase("complete_2");
+    } catch (err) {
+      console.error("Pendant payment error:", err);
+      setShowThinkingDots(false);
+      await renderMessages(
+        ["I apologize — there was a problem processing your order. Please try again."],
+        null,
+        "none",
+        undefined
+      );
+    }
+  }
+
+  // Handle pendant shipping form submission
+  async function handlePendantShippingSubmit(shipping: ShippingData) {
+    if (!upsellSessionId || isTyping) return;
+    await processPendantPayment(shipping);
   }
 
   // ========================================================================
@@ -697,7 +925,7 @@ export default function ConfirmationPage() {
                 );
               }
 
-              // Shipping form
+              // Shipping form (medal)
               if (it.kind === "shipping_form") {
                 return (
                   <div key={it.id} className="flex items-end gap-3">
@@ -705,6 +933,36 @@ export default function ConfirmationPage() {
                     <ShippingForm
                       onSubmit={handleShippingSubmit}
                       disabled={isTyping}
+                    />
+                  </div>
+                );
+              }
+
+              // Pendant offer card
+              if (it.kind === "pendant_offer") {
+                return (
+                  <div key={it.id} className="flex items-end gap-3">
+                    <AvatarSm />
+                    <PendantOfferCard
+                      personName={displayPersonName}
+                      isForSelf={isForSelf}
+                      onAccept={() => handleUpsell2Action("accept_pendant")}
+                      onDecline={() => handleUpsell2Action("decline_pendant")}
+                      disabled={isTyping}
+                    />
+                  </div>
+                );
+              }
+
+              // Pendant shipping form
+              if (it.kind === "pendant_shipping_form") {
+                return (
+                  <div key={it.id} className="flex items-end gap-3">
+                    <AvatarSm />
+                    <ShippingForm
+                      onSubmit={handlePendantShippingSubmit}
+                      disabled={isTyping}
+                      price="$49"
                     />
                   </div>
                 );

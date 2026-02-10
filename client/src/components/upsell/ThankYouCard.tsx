@@ -2,7 +2,7 @@ import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import sisterMariePortrait from "@/assets/images/sister-marie-portrait.png";
 
-type ThankYouVariant = "prayer" | "candle" | "medal";
+type ThankYouVariant = "prayer" | "candle" | "medal" | "pendant" | "close";
 
 interface ThankYouCardProps {
   variant: ThankYouVariant;
@@ -72,6 +72,36 @@ const VARIANT_CONTENT: Record<
     ],
     sisterMessage: (name: string) =>
       `I will personally ensure your medal is blessed at the Grotto before it begins its journey to ${name}. It carries within it the healing waters that have brought comfort to so many. May Our Lady of Lourdes watch over you both, and may this medal be a source of strength and hope.`,
+  },
+  pendant: {
+    icon: "\uD83D\uDEE1\uFE0F",
+    headline: "Your Order is Confirmed",
+    subtext: () => "A protector is on the way",
+    productLabel: "Archangel Michael Pendant",
+    productImage: "/images/pendant-front.jpg",
+    price: "$49",
+    steps: [
+      "Pendant prepared and shipped",
+      "Arrives within 7-14 business days",
+      "Tracking number sent via email",
+      "St. Michael Prayer Card included",
+    ],
+    sisterMessage: (name: string) =>
+      `${name} has Our Lady's healing AND Michael's protection now. That is a powerful combination. May the Archangel stand guard over ${name}, and may you feel his strength in the days ahead.`,
+  },
+  close: {
+    icon: "\uD83D\uDE4F",
+    headline: "God Bless You",
+    subtext: () => "Your prayer is in our hands",
+    productLabel: "Petition",
+    steps: [
+      "Your petition will be printed on sacred paper",
+      "Placed in the petition box at the Grotto of Massabielle",
+      "Prayed over daily by the Sanctuary chaplains",
+      "You'll receive confirmation via email",
+    ],
+    sisterMessage: (name: string) =>
+      `Thank you for entrusting ${name}'s intentions to Our Lady of Lourdes. Your prayer will be placed at the Grotto. You are in my prayers, and I trust Our Lady will intercede for you. God bless you.`,
   },
 };
 

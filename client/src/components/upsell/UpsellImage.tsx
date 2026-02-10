@@ -31,6 +31,22 @@ const IMAGE_SOURCES: Record<string, { src: string; alt: string }> = {
     src: "/images/certificate.jpg",
     alt: "Certificate of Authenticity for Lourdes water",
   },
+  michael_portrait: {
+    src: "/images/michael-portrait.jpg",
+    alt: "Archangel Michael in armor with sword and wings",
+  },
+  pendant_front: {
+    src: "/images/pendant-front.jpg",
+    alt: "Archangel Michael Pendant — sterling silver with chain",
+  },
+  testimonial_michael: {
+    src: "/images/testimonial-michael.png",
+    alt: "Maria holding the Archangel Michael Pendant",
+  },
+  testimonial_michael_self: {
+    src: "/images/testimonial-michael-self.png",
+    alt: "Daniel wearing the Archangel Michael Pendant",
+  },
 };
 
 interface UpsellImageProps {

@@ -7,6 +7,7 @@ import { Label } from "@/components/ui/label";
 interface ShippingFormProps {
   onSubmit: (shipping: ShippingData) => void;
   disabled?: boolean;
+  price?: string;
 }
 
 export interface ShippingData {
@@ -22,6 +23,7 @@ export interface ShippingData {
 export default function ShippingForm({
   onSubmit,
   disabled = false,
+  price = "$79",
 }: ShippingFormProps) {
   const [shipping, setShipping] = useState<ShippingData>({
     name: "",
@@ -211,7 +213,7 @@ export default function ShippingForm({
           disabled={disabled}
           className="w-full h-11 rounded-xl bg-primary hover:bg-primary/90 text-primary-foreground font-medium mt-4"
         >
-          Continue to Payment — $79
+          Continue to Payment — {price}
         </Button>
 
         <p className="text-xs text-muted-foreground text-center">

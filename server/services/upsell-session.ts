@@ -51,7 +51,55 @@ export interface UpsellFlags {
   downsellShown: boolean;
 }
 
-export type PurchaseType = "prayer" | "candle" | "medal" | null;
+export type PurchaseType = "prayer" | "candle" | "medal" | "pendant" | null;
+
+// ============================================================================
+// UPSELL 2 TYPES
+// ============================================================================
+
+export type Upsell2Phase =
+  | "not_started"
+  | "transition_2"
+  | "michael_story"
+  | "show_pendant"
+  | "protection"
+  | "the_ask_2"
+  | "handle_response_2"
+  | "complete_2";
+
+export type Upsell2UiHint =
+  | "none"
+  | "show_pendant_offer"
+  | "show_pendant_offer_self"
+  | "show_pendant_shipping_form"
+  | "show_thank_you_pendant"
+  | "show_thank_you_close";
+
+export type Upsell2Image =
+  | "michael_portrait"
+  | "pendant_front"
+  | "testimonial_michael"
+  | "testimonial_michael_self"
+  | null;
+
+export type Upsell1Outcome = "medal" | "candle" | "declined";
+
+export interface Upsell2Flags {
+  prayingFor: PrayingFor;
+  pendantOfferShown: boolean;
+  pendantAccepted: boolean;
+  pendantDeclined: boolean;
+  shippingAlreadyCollected: boolean;
+}
+
+export interface Upsell2Response {
+  messages: string[];
+  image: Upsell2Image;
+  imageAfterMessage?: number;
+  uiHint: Upsell2UiHint;
+  phase: Upsell2Phase;
+  upsell2Flags: Upsell2Flags;
+}
 
 export interface UpsellSessionContext {
   upsellSessionId: string;
@@ -71,6 +119,12 @@ export interface UpsellSessionContext {
   }>;
   messageIndex: number; // Track which message we're on in the flow
   purchaseType: PurchaseType; // What the user purchased
+  // Upsell 2 fields
+  upsell2Phase: Upsell2Phase;
+  upsell1Outcome: Upsell1Outcome | null;
+  upsell2Flags: Upsell2Flags;
+  upsell2MessageIndex: number;
+  upsell2PurchaseType: PurchaseType;
 }
 
 export interface UpsellResponse {
@@ -144,6 +198,18 @@ export function createUpsellSession(params: CreateUpsellSessionParams): UpsellSe
     conversationHistory: [],
     messageIndex: 0,
     purchaseType: "prayer", // Default: they've paid for prayer before reaching upsell
+    // Upsell 2 defaults
+    upsell2Phase: "not_started",
+    upsell1Outcome: null,
+    upsell2Flags: {
+      prayingFor,
+      pendantOfferShown: false,
+      pendantAccepted: false,
+      pendantDeclined: false,
+      shippingAlreadyCollected: false,
+    },
+    upsell2MessageIndex: 0,
+    upsell2PurchaseType: null,
   };
 
   upsellSessions.set(upsellSessionId, session);
@@ -233,6 +299,70 @@ export function setPurchaseType(
   if (!session) return null;
 
   session.purchaseType = purchaseType;
+  upsellSessions.set(upsellSessionId, session);
+  return session;
+}
+
+// ============================================================================
+// UPSELL 2 STATE TRANSITIONS
+// ============================================================================
+
+export function setUpsell2Phase(
+  upsellSessionId: string,
+  phase: Upsell2Phase
+): UpsellSessionContext | null {
+  const session = upsellSessions.get(upsellSessionId);
+  if (!session) return null;
+
+  session.upsell2Phase = phase;
+  upsellSessions.set(upsellSessionId, session);
+  return session;
+}
+
+export function setUpsell2Flag(
+  upsellSessionId: string,
+  flag: keyof Upsell2Flags,
+  value: boolean | PrayingFor
+): UpsellSessionContext | null {
+  const session = upsellSessions.get(upsellSessionId);
+  if (!session) return null;
+
+  if (flag === "prayingFor") {
+    session.upsell2Flags.prayingFor = value as PrayingFor;
+  } else if (flag === "pendantOfferShown") {
+    session.upsell2Flags.pendantOfferShown = value as boolean;
+  } else if (flag === "pendantAccepted") {
+    session.upsell2Flags.pendantAccepted = value as boolean;
+  } else if (flag === "pendantDeclined") {
+    session.upsell2Flags.pendantDeclined = value as boolean;
+  } else if (flag === "shippingAlreadyCollected") {
+    session.upsell2Flags.shippingAlreadyCollected = value as boolean;
+  }
+
+  upsellSessions.set(upsellSessionId, session);
+  return session;
+}
+
+export function setUpsell1Outcome(
+  upsellSessionId: string,
+  outcome: Upsell1Outcome
+): UpsellSessionContext | null {
+  const session = upsellSessions.get(upsellSessionId);
+  if (!session) return null;
+
+  session.upsell1Outcome = outcome;
+  upsellSessions.set(upsellSessionId, session);
+  return session;
+}
+
+export function setUpsell2PurchaseType(
+  upsellSessionId: string,
+  purchaseType: PurchaseType
+): UpsellSessionContext | null {
+  const session = upsellSessions.get(upsellSessionId);
+  if (!session) return null;
+
+  session.upsell2PurchaseType = purchaseType;
   upsellSessions.set(upsellSessionId, session);
   return session;
 }

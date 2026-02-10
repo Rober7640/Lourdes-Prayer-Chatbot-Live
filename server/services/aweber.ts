@@ -158,7 +158,8 @@ export type SubscriberList =
   | "free"           // Prayer finalized (pre-payment)
   | "paid"           // Purchased prayer ($28/$35/$55)
   | "upsell_medal"   // Purchased medal upsell
-  | "upsell_candle"; // Purchased candle upsell
+  | "upsell_candle"  // Purchased candle upsell
+  | "upsell_pendant"; // Purchased pendant upsell
 
 export interface SubscriberData {
   email: string;
@@ -177,6 +178,7 @@ function getListId(list: SubscriberList): string | null {
     paid: process.env.AWEBER_LIST_ID_PAID,
     upsell_medal: process.env.AWEBER_LIST_ID_UPSELL_MEDAL,
     upsell_candle: process.env.AWEBER_LIST_ID_UPSELL_CANDLE,
+    upsell_pendant: process.env.AWEBER_LIST_ID_UPSELL_PENDANT,
   };
   return listMap[list] || null;
 }
@@ -293,7 +295,7 @@ export async function addSubscriberTags(
  */
 export async function addToCustomerList(
   email: string,
-  purchaseType: "prayer" | "medal" | "candle",
+  purchaseType: "prayer" | "medal" | "candle" | "pendant",
   data?: {
     name?: string;
     prayer?: string;
@@ -311,6 +313,7 @@ export async function addToCustomerList(
   const targetList: SubscriberList =
     purchaseType === "medal" ? "upsell_medal" :
     purchaseType === "candle" ? "upsell_candle" :
+    purchaseType === "pendant" ? "upsell_pendant" :
     "paid";
 
   try {

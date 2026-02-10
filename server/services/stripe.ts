@@ -19,7 +19,7 @@ const stripe = process.env.STRIPE_SECRET_KEY
 // ============================================================================
 
 export type PaymentTier = "hardship" | "full" | "generous";
-export type UpsellType = "medal" | "candle";
+export type UpsellType = "medal" | "candle" | "pendant";
 
 interface CheckoutConfig {
   sessionId: string;
@@ -57,6 +57,7 @@ function getUpsellPriceId(type: UpsellType): string | null {
   const priceMap: Record<UpsellType, string | undefined> = {
     medal: process.env.STRIPE_PRICE_ID_MEDAL,
     candle: process.env.STRIPE_PRICE_ID_CANDLE,
+    pendant: process.env.STRIPE_PRICE_ID_PENDANT,
   };
   return priceMap[type] || null;
 }
@@ -74,6 +75,7 @@ function getUpsellAmount(type: UpsellType): number {
   const amounts: Record<UpsellType, number> = {
     medal: 7900,
     candle: 1900,
+    pendant: 4900,
   };
   return amounts[type];
 }
@@ -217,8 +219,8 @@ export async function createUpsellCheckoutSession(
       },
     };
 
-    // Medal requires shipping address
-    if (config.upsellType === "medal" || config.requiresShipping) {
+    // Medal and pendant require shipping address
+    if (config.upsellType === "medal" || config.upsellType === "pendant" || config.requiresShipping) {
       checkoutConfig.shipping_address_collection = {
         allowed_countries: ["US", "CA", "GB", "AU", "NZ", "IE", "FR", "DE", "IT", "ES"],
       };
@@ -570,6 +572,7 @@ export async function chargeOneClickUpsell(
     const upsellDescriptions: Record<UpsellType, string> = {
       medal: "Lourdes Medal",
       candle: "Candle Lighting",
+      pendant: "Archangel Michael Pendant",
     };
 
     // Create payment intent and charge immediately

@@ -235,3 +235,53 @@ export async function updateCandleStatus(email: string): Promise<void> {
 
   console.log(`Google Sheets: updated candle status to "Yes" for ${email} (row ${rowIndex})`);
 }
+
+// ============================================================================
+// PENDANT STATUS UPDATE
+// ============================================================================
+
+/**
+ * Find a row by email in "lourdes grotto" and set the Pendant column to "Yes".
+ * Searches column D (Email) for a match, updates column H (Pendant).
+ */
+export async function updatePendantStatus(email: string): Promise<void> {
+  const sheets = await getSheetsClient();
+  const spreadsheetId = getSpreadsheetId();
+
+  // Read all emails from column D
+  const result = await sheets.spreadsheets.values.get({
+    spreadsheetId,
+    range: "lourdes grotto!D:D",
+  });
+
+  const rows = result.data.values;
+  if (!rows) {
+    console.log(`Google Sheets: no data in "lourdes grotto" to search for ${email}`);
+    return;
+  }
+
+  // Find the row index (1-based in Sheets) where email matches
+  let rowIndex = -1;
+  for (let i = 0; i < rows.length; i++) {
+    if (rows[i][0] && rows[i][0].toLowerCase() === email.toLowerCase()) {
+      rowIndex = i + 1; // Sheets is 1-based
+    }
+  }
+
+  if (rowIndex === -1) {
+    console.log(`Google Sheets: email ${email} not found in "lourdes grotto"`);
+    return;
+  }
+
+  // Update column H (Pendant) for the matched row
+  await sheets.spreadsheets.values.update({
+    spreadsheetId,
+    range: `lourdes grotto!H${rowIndex}`,
+    valueInputOption: "USER_ENTERED",
+    requestBody: {
+      values: [["Yes"]],
+    },
+  });
+
+  console.log(`Google Sheets: updated pendant status to "Yes" for ${email} (row ${rowIndex})`);
+}
