@@ -301,6 +301,7 @@ export async function addToCustomerList(
     prayer?: string;
     tier?: string;
     stripePaymentId?: string; // pi_xxx payment intent ID
+    shippingAddress?: string; // formatted shipping address string
   }
 ): Promise<boolean> {
   const config = getConfig();
@@ -323,9 +324,13 @@ export async function addToCustomerList(
     if (purchaseType === "prayer" && data?.prayer) {
       customFields.prayer = data.prayer;
     }
-    // Save stripe_payment_id for all purchase types (paid, medal, candle)
+    // Save stripe_payment_id for all purchase types
     if (data?.stripePaymentId) {
       customFields.stripe_payment_id = data.stripePaymentId;
+    }
+    // Save shipping_address for physical product purchases (medal, pendant)
+    if (data?.shippingAddress) {
+      customFields.shipping_address = data.shippingAddress;
     }
 
     const tags = [`purchased_${purchaseType}`, `converted_${new Date().toISOString().split("T")[0]}`];

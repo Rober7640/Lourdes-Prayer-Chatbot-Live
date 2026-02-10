@@ -1667,9 +1667,17 @@ export async function registerRoutes(
 
           // Add to AWeber upsell list
           if (originalSession.userEmail && isAweberEnabled()) {
+            const addressParts = [
+              shippingData.name,
+              shippingData.address1,
+              shippingData.address2,
+              `${shippingData.city}, ${shippingData.state || ""} ${shippingData.postal}`.trim(),
+              shippingData.country,
+            ].filter(Boolean);
             addToCustomerList(originalSession.userEmail, "pendant", {
               name: originalSession.userName || undefined,
               stripePaymentId: result.paymentIntentId || undefined,
+              shippingAddress: addressParts.join(", "),
             }).catch((err) => console.error("AWeber pendant upsell list add failed:", err));
           }
 
