@@ -13,16 +13,10 @@ import {
   calculatePauseBetweenMessages,
   calculateThinkingDelay,
 } from "@/lib/typing";
-import {
-  trackPurchase,
-  TIER_AMOUNTS,
-} from "@/lib/fbTracking";
 
 // Import upsell components
 import UpsellImage from "@/components/upsell/UpsellImage";
-import ContinueOrGoButtons from "@/components/upsell/ContinueOrGoButtons";
-import MedalOfferCard from "@/components/upsell/MedalOfferCard";
-import CandleOfferCard from "@/components/upsell/CandleOfferCard";
+import PendantOfferCard from "@/components/upsell/PendantOfferCard";
 import ShippingForm, { type ShippingData } from "@/components/upsell/ShippingForm";
 import ThankYouCard from "@/components/upsell/ThankYouCard";
 
@@ -34,26 +28,20 @@ type Role = "sm" | "user";
 
 type UpsellUiHint =
   | "none"
-  | "continue_or_go"
-  | "show_offer"
-  | "show_offer_self"
-  | "tell_me_more"
-  | "show_candle_offer"
-  | "show_shipping_form"
-  | "show_thank_you_prayer"
-  | "show_thank_you_candle"
-  | "show_thank_you_medal";
+  | "show_pendant_offer"
+  | "show_pendant_offer_self"
+  | "show_pendant_shipping_form"
+  | "show_thank_you_pendant"
+  | "show_thank_you_close";
 
 type UpsellImage =
-  | "medal_front"
-  | "medal_back"
-  | "bernadette_portrait"
-  | "testimonial_medal"
-  | "testimonial_medal_self"
-  | "candle_grotto"
+  | "michael_pendant"
+  | "st_michael_archangel"
+  | "testimonial_michael"
+  | "testimonial_michael_self"
   | null;
 
-type ThankYouVariant = "prayer" | "candle" | "medal";
+type ThankYouVariant = "pendant" | "close";
 
 type Upsell1Outcome = "medal" | "candle" | "declined";
 
@@ -61,20 +49,9 @@ type ChatItem =
   | { id: string; role: Role; kind: "text"; text: string }
   | { id: string; role: "sm"; kind: "typing"; text: string; fullText: string }
   | { id: string; role: "sm"; kind: "image"; imageKey: string }
-  | { id: string; role: "sm"; kind: "continue_or_go" }
-  | { id: string; role: "sm"; kind: "medal_offer" }
-  | { id: string; role: "sm"; kind: "candle_offer" }
-  | { id: string; role: "sm"; kind: "shipping_form" }
+  | { id: string; role: "sm"; kind: "pendant_offer" }
+  | { id: string; role: "sm"; kind: "pendant_shipping_form" }
   | { id: string; role: "sm"; kind: "thank_you"; variant: ThankYouVariant };
-
-interface UpsellFlags {
-  prayingFor: "self" | "other" | "both";
-  userEngaged: boolean;
-  offerShown: boolean;
-  userAccepted: boolean;
-  userDeclined: boolean;
-  downsellShown: boolean;
-}
 
 // ============================================================================
 // HELPERS
@@ -139,14 +116,14 @@ function TypingDots() {
 // MAIN COMPONENT
 // ============================================================================
 
-export default function ConfirmationPage() {
+export default function ConfirmPendantPage() {
   // Get sessionId from URL params
   const params = useParams<{ sessionId: string }>();
   const sessionId = params.sessionId;
 
   // Session state
   const [upsellSessionId, setUpsellSessionId] = useState<string | null>(null);
-  const [phase, setPhase] = useState<string>("transition");
+  const [phase, setPhase] = useState<string>("transition_2");
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -156,14 +133,11 @@ export default function ConfirmationPage() {
   const [prayingFor, setPrayingFor] = useState<"self" | "other" | "both">("other");
   const [situation, setSituation] = useState<string | null>(null);
   const [userEmail, setUserEmail] = useState<string | null>(null);
-  const [flags, setFlags] = useState<UpsellFlags | null>(null);
 
   // Chat state
   const [items, setItems] = useState<ChatItem[]>([]);
   const [isTyping, setIsTyping] = useState(false);
   const [showThinkingDots, setShowThinkingDots] = useState(false);
-  const [pendingImage, setPendingImage] = useState<UpsellImage>(null);
-  const [pendingUiHint, setPendingUiHint] = useState<UpsellUiHint>("none");
 
   // Refs
   const isMountedRef = useRef(true);
@@ -283,40 +257,25 @@ export default function ConfirmationPage() {
         await sleep(calculatePauseBetweenMessages());
         if (!isMountedRef.current) return;
 
-        if (uiHint === "continue_or_go") {
+        if (uiHint === "show_pendant_offer" || uiHint === "show_pendant_offer_self") {
           setItems((prev) => [
             ...prev,
-            { id: uid("sm"), role: "sm", kind: "continue_or_go" },
+            { id: uid("sm"), role: "sm", kind: "pendant_offer" },
           ]);
-        } else if (uiHint === "show_offer" || uiHint === "show_offer_self") {
+        } else if (uiHint === "show_pendant_shipping_form") {
           setItems((prev) => [
             ...prev,
-            { id: uid("sm"), role: "sm", kind: "medal_offer" },
+            { id: uid("sm"), role: "sm", kind: "pendant_shipping_form" },
           ]);
-        } else if (uiHint === "show_candle_offer") {
+        } else if (uiHint === "show_thank_you_pendant") {
           setItems((prev) => [
             ...prev,
-            { id: uid("sm"), role: "sm", kind: "candle_offer" },
+            { id: uid("sm"), role: "sm", kind: "thank_you", variant: "pendant" },
           ]);
-        } else if (uiHint === "show_shipping_form") {
+        } else if (uiHint === "show_thank_you_close") {
           setItems((prev) => [
             ...prev,
-            { id: uid("sm"), role: "sm", kind: "shipping_form" },
-          ]);
-        } else if (uiHint === "show_thank_you_prayer") {
-          setItems((prev) => [
-            ...prev,
-            { id: uid("sm"), role: "sm", kind: "thank_you", variant: "prayer" },
-          ]);
-        } else if (uiHint === "show_thank_you_candle") {
-          setItems((prev) => [
-            ...prev,
-            { id: uid("sm"), role: "sm", kind: "thank_you", variant: "candle" },
-          ]);
-        } else if (uiHint === "show_thank_you_medal") {
-          setItems((prev) => [
-            ...prev,
-            { id: uid("sm"), role: "sm", kind: "thank_you", variant: "medal" },
+            { id: uid("sm"), role: "sm", kind: "thank_you", variant: "close" },
           ]);
         }
       }
@@ -330,9 +289,9 @@ export default function ConfirmationPage() {
   // API CALLS
   // ========================================================================
 
-  // Initialize upsell session
+  // Initialize pendant page - start upsell 2
   useEffect(() => {
-    async function loadConfirmation() {
+    async function loadPendantPage() {
       if (!sessionId) {
         setError("Session ID is required");
         setIsLoading(false);
@@ -342,117 +301,136 @@ export default function ConfirmationPage() {
       try {
         setIsLoading(true);
 
-        // Verify checkout session if arriving from Stripe redirect
+        // Get the upsell session and context
+        const sessionRes = await fetch(`/api/confirmation/${sessionId}`);
+        if (!sessionRes.ok) {
+          throw new Error("Failed to load session");
+        }
+
+        const sessionData = await sessionRes.json();
+        setUpsellSessionId(sessionData.upsellSessionId);
+        setUserName(sessionData.userName);
+        setPersonName(sessionData.personName);
+        setPrayingFor(sessionData.prayingFor || "other");
+        setSituation(sessionData.situation || null);
+        setUserEmail(sessionData.userEmail || null);
+
+        // Determine upsell 1 outcome from URL or session
         const urlParams = new URLSearchParams(window.location.search);
-        const checkoutSessionId = urlParams.get("checkout_session");
-        if (checkoutSessionId) {
-          try {
-            const verifyRes = await fetch("/api/payment/verify-checkout", {
-              method: "POST",
-              headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({ sessionId, checkoutSessionId }),
-            });
-            const verifyData = await verifyRes.json();
-            // Fire client-side Purchase pixel event
-            if (verifyData.paymentIntentId) {
-              const amount = TIER_AMOUNTS[verifyData.tier] || 35;
-              trackPurchase(verifyData.paymentIntentId, amount, "prayer_petition");
-            }
-          } catch (err) {
-            console.error("Failed to verify checkout:", err);
-          }
-        }
+        const outcome = (urlParams.get("outcome") || "declined") as Upsell1Outcome;
 
-        // Clean query params from URL (checkout_session, upsell, etc.)
+        // Clean query params from URL
         if (window.location.search) {
-          window.history.replaceState({}, "", `/confirmation/${sessionId}`);
+          window.history.replaceState({}, "", `/confirm-pendant/${sessionId}`);
         }
 
-        const res = await fetch(`/api/confirmation/${sessionId}`);
+        // Start upsell 2
+        const upsell2Res = await fetch("/api/upsell2/start", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            upsellSessionId: sessionData.upsellSessionId,
+            upsell1Outcome: outcome,
+          }),
+        });
 
-        if (!res.ok) {
-          throw new Error("Failed to load confirmation page");
+        if (!upsell2Res.ok) {
+          throw new Error("Failed to start upsell 2");
         }
 
-        const data = await res.json();
-        setUpsellSessionId(data.upsellSessionId);
-        setPhase(data.phase);
-        setUserName(data.userName);
-        setPersonName(data.personName);
-        setPrayingFor(data.prayingFor || "other");
-        setSituation(data.situation || null);
-        setUserEmail(data.userEmail || null);
-        setFlags(data.flags);
+        const upsell2Data = await upsell2Res.json();
+        setPhase(upsell2Data.phase);
         setIsLoading(false);
 
         // Render initial messages
-        await renderMessages(data.messages, data.image, data.uiHint, data.imageAfterMessage);
+        await renderMessages(
+          upsell2Data.messages,
+          upsell2Data.image,
+          upsell2Data.uiHint,
+          upsell2Data.imageAfterMessage
+        );
+
+        // Auto-advance if needed
+        if (upsell2Data.uiHint === "none" && upsell2Data.phase !== "complete_2" && upsell2Data.phase !== "the_ask_2") {
+          await advanceUpsell2();
+        }
       } catch (err) {
-        console.error("Failed to load confirmation:", err);
+        console.error("Failed to load pendant page:", err);
         setError("Unable to load this page. Please try again.");
         setIsLoading(false);
       }
     }
 
-    loadConfirmation();
+    loadPendantPage();
   }, [sessionId, renderMessages]);
 
-  // Handle action button clicks (Upsell 1)
-  async function handleAction(action: string) {
+  // Auto-advance Upsell 2 to next phase
+  async function advanceUpsell2() {
+    if (!upsellSessionId) return;
+
+    try {
+      await sleep(800);
+      if (!isMountedRef.current) return;
+
+      const res = await fetch("/api/upsell2/advance", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ upsellSessionId }),
+      });
+
+      if (!res.ok) {
+        throw new Error("Failed to advance upsell 2 phase");
+      }
+
+      const data = await res.json();
+
+      if (data.messages && data.messages.length > 0) {
+        setPhase(data.phase);
+        await renderMessages(data.messages, data.image, data.uiHint, data.imageAfterMessage);
+
+        // Continue auto-advancing if appropriate
+        if (data.uiHint === "none" && data.phase !== "complete_2" && data.phase !== "the_ask_2") {
+          await advanceUpsell2();
+        }
+      }
+    } catch (err) {
+      console.error("Upsell 2 advance error:", err);
+    }
+  }
+
+  // Handle pendant actions (accept/decline)
+  async function handlePendantAction(action: "accept_pendant" | "decline_pendant") {
     if (!upsellSessionId || isTyping) return;
 
-    // Remove UI elements
-    setItems((prev) => prev.filter((i) =>
-      i.kind !== "continue_or_go" &&
-      i.kind !== "medal_offer" &&
-      i.kind !== "candle_offer"
-    ));
+    // Remove pendant offer card
+    setItems((prev) => prev.filter((i) => i.kind !== "pendant_offer"));
 
     try {
       setShowThinkingDots(true);
-      const res = await fetch("/api/upsell/action", {
+      const res = await fetch("/api/upsell2/action", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ upsellSessionId, action }),
       });
 
       if (!res.ok) {
-        throw new Error("Failed to process action");
+        throw new Error("Failed to process pendant action");
       }
 
       const data = await res.json();
       setPhase(data.phase);
-      setFlags(data.flags);
       setShowThinkingDots(false);
 
-      // For candle acceptance, process payment then start Upsell 2
-      if (action === "accept_candle") {
-        await processCandlePayment();
-        return;
-      }
-
-      // For "go" (early exit), show prayer thank-you and skip Upsell 2
-      if (action === "go") {
-        await renderMessages(data.messages, data.image, data.uiHint, data.imageAfterMessage);
-        return;
-      }
-
-      // For decline_candle: skip the prayer thank-you, redirect to pendant page instead
-      if (action === "decline_candle") {
-        // Don't render the default decline messages/thank-you
-        // Redirect to pendant page (Upsell 2)
-        window.location.href = `/confirm-pendant/${sessionId}?outcome=declined`;
+      // For accept_pendant with shipping already collected, process payment immediately
+      if (action === "accept_pendant" && data.uiHint === "show_thank_you_pendant") {
+        await renderMessages(data.messages, data.image, "none", data.imageAfterMessage);
+        await processPendantPayment();
         return;
       }
 
       await renderMessages(data.messages, data.image, data.uiHint, data.imageAfterMessage);
-
-      // Auto-advance if uiHint is "none" and not at terminal phase
-      if (data.uiHint === "none" && data.phase !== "complete" && data.phase !== "the_ask") {
-        await advancePhase();
-      }
     } catch (err) {
-      console.error("Action error:", err);
+      console.error("Pendant action error:", err);
       setShowThinkingDots(false);
       await renderMessages(
         ["I apologize — something went wrong. Please try again."],
@@ -463,20 +441,23 @@ export default function ConfirmationPage() {
     }
   }
 
-  // Process candle payment via one-click or checkout fallback
-  async function processCandlePayment() {
+  // Process pendant payment (one-click or checkout fallback)
+  async function processPendantPayment(shipping?: ShippingData) {
     if (!upsellSessionId) return;
 
     try {
       setShowThinkingDots(true);
-      const res = await fetch("/api/upsell/candle", {
+      const res = await fetch("/api/upsell2/pendant", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ upsellSessionId }),
+        body: JSON.stringify({
+          upsellSessionId,
+          ...(shipping ? { shipping } : {}),
+        }),
       });
 
       if (!res.ok) {
-        throw new Error("Failed to process candle payment");
+        throw new Error("Failed to process pendant payment");
       }
 
       const data = await res.json();
@@ -488,19 +469,19 @@ export default function ConfirmationPage() {
         return;
       }
 
-      // One-click success — show thank you card, then redirect to pendant page
-      if (data.uiHint === "show_thank_you_candle") {
+      // One-click success — remove pendant shipping form and show thank you
+      setItems((prev) => prev.filter((i) => i.kind !== "pendant_shipping_form"));
+
+      if (data.uiHint === "show_thank_you_pendant") {
         setItems((prev) => [
           ...prev,
-          { id: uid("sm"), role: "sm", kind: "thank_you", variant: "candle" as ThankYouVariant },
+          { id: uid("sm"), role: "sm", kind: "thank_you", variant: "pendant" as ThankYouVariant },
         ]);
       }
 
-      // Redirect to pendant page (Upsell 2) after candle purchase
-      await sleep(2000);
-      window.location.href = `/confirm-pendant/${sessionId}?outcome=candle`;
+      setPhase("complete_2");
     } catch (err) {
-      console.error("Candle payment error:", err);
+      console.error("Pendant payment error:", err);
       setShowThinkingDots(false);
       await renderMessages(
         ["I apologize — there was a problem processing your order. Please try again."],
@@ -511,87 +492,10 @@ export default function ConfirmationPage() {
     }
   }
 
-  // Auto-advance to next phase
-  async function advancePhase() {
+  // Handle pendant shipping form submission
+  async function handlePendantShippingSubmit(shipping: ShippingData) {
     if (!upsellSessionId || isTyping) return;
-
-    try {
-      // Small delay before advancing
-      await sleep(800);
-      if (!isMountedRef.current) return;
-
-      const res = await fetch("/api/upsell/advance", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ upsellSessionId }),
-      });
-
-      if (!res.ok) {
-        throw new Error("Failed to advance phase");
-      }
-
-      const data = await res.json();
-
-      if (data.messages && data.messages.length > 0) {
-        setPhase(data.phase);
-        setFlags(data.flags);
-        await renderMessages(data.messages, data.image, data.uiHint, data.imageAfterMessage);
-
-        // Continue auto-advancing if appropriate
-        if (data.uiHint === "none" && data.phase !== "complete" && data.phase !== "the_ask") {
-          await advancePhase();
-        }
-      }
-    } catch (err) {
-      console.error("Advance error:", err);
-    }
-  }
-
-  // Handle shipping form submission (medal)
-  async function handleShippingSubmit(shipping: ShippingData) {
-    if (!upsellSessionId || isTyping) return;
-
-    try {
-      const res = await fetch("/api/upsell/medal", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ upsellSessionId, shipping }),
-      });
-
-      if (!res.ok) {
-        throw new Error("Failed to process order");
-      }
-
-      const data = await res.json();
-
-      // If one-click failed and checkout is required, redirect to Stripe
-      if (data.requiresCheckout && data.checkoutUrl) {
-        window.location.href = data.checkoutUrl;
-        return;
-      }
-
-      // One-click success — remove shipping form and show thank you card
-      setItems((prev) => prev.filter((i) => i.kind !== "shipping_form"));
-
-      if (data.uiHint === "show_thank_you_medal") {
-        setItems((prev) => [
-          ...prev,
-          { id: uid("sm"), role: "sm", kind: "thank_you", variant: "medal" as ThankYouVariant },
-        ]);
-      }
-
-      // Redirect to pendant page (Upsell 2) after medal purchase
-      await sleep(2000);
-      window.location.href = `/confirm-pendant/${sessionId}?outcome=medal`;
-    } catch (err) {
-      console.error("Shipping submit error:", err);
-      await renderMessages(
-        ["I apologize — there was a problem processing your order. Please try again."],
-        null,
-        "show_shipping_form",
-        undefined
-      );
-    }
+    await processPendantPayment(shipping);
   }
 
   // ========================================================================
@@ -671,60 +575,31 @@ export default function ConfirmationPage() {
                 );
               }
 
-              // Continue or Go buttons
-              if (it.kind === "continue_or_go") {
-                return (
-                  <div key={it.id} className="flex items-end gap-3 pl-13">
-                    <ContinueOrGoButtons
-                      onContinue={() => handleAction("continue")}
-                      onGo={() => handleAction("go")}
-                      disabled={isTyping}
-                    />
-                  </div>
-                );
-              }
-
-              // Medal offer card
-              if (it.kind === "medal_offer") {
+              // Pendant offer card
+              if (it.kind === "pendant_offer") {
                 return (
                   <div key={it.id} className="flex items-end gap-3">
                     <AvatarSm />
-                    <MedalOfferCard
+                    <PendantOfferCard
                       personName={displayPersonName}
                       isForSelf={isForSelf}
-                      onAccept={() => handleAction("accept_medal")}
-                      onTellMeMore={() => handleAction("tell_me_more")}
-                      onDecline={() => handleAction("decline_medal")}
+                      onAccept={() => handlePendantAction("accept_pendant")}
+                      onDecline={() => handlePendantAction("decline_pendant")}
                       disabled={isTyping}
                     />
                   </div>
                 );
               }
 
-              // Candle offer card
-              if (it.kind === "candle_offer") {
-                return (
-                  <div key={it.id} className="flex items-end gap-3">
-                    <AvatarSm />
-                    <CandleOfferCard
-                      personName={displayPersonName}
-                      isForSelf={isForSelf}
-                      onAccept={() => handleAction("accept_candle")}
-                      onDecline={() => handleAction("decline_candle")}
-                      disabled={isTyping}
-                    />
-                  </div>
-                );
-              }
-
-              // Shipping form (medal)
-              if (it.kind === "shipping_form") {
+              // Pendant shipping form
+              if (it.kind === "pendant_shipping_form") {
                 return (
                   <div key={it.id} className="flex items-end gap-3">
                     <AvatarSm />
                     <ShippingForm
-                      onSubmit={handleShippingSubmit}
+                      onSubmit={handlePendantShippingSubmit}
                       disabled={isTyping}
+                      price="$49"
                     />
                   </div>
                 );

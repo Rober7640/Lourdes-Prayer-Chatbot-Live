@@ -2323,7 +2323,7 @@ export async function registerRoutes(
                             result.type === "pendant" ? "pendant" : "prayer";
 
         // Get prayer text, tier, and payment ID for the AWeber custom fields
-        const aweberData: { name?: string; prayer?: string; tier?: string; stripePaymentId?: string } = {
+        const aweberData: { name?: string; prayer?: string; tier?: string; stripePaymentId?: string; shippingAddress?: string } = {
           name: session.userName || undefined,
         };
 
@@ -2338,6 +2338,19 @@ export async function registerRoutes(
           }
           if (result.tier) {
             aweberData.tier = result.tier; // hardship, full, or generous
+          }
+        }
+        // Include shipping address for physical products (medal, pendant)
+        if (purchaseType === "medal" || purchaseType === "pendant") {
+          if (session.shippingName && session.shippingAddressLine1) {
+            const addressParts = [
+              session.shippingName,
+              session.shippingAddressLine1,
+              session.shippingAddressLine2,
+              `${session.shippingCity}, ${session.shippingState || ""} ${session.shippingPostalCode}`.trim(),
+              session.shippingCountry,
+            ].filter(Boolean);
+            aweberData.shippingAddress = addressParts.join(", ");
           }
         }
 

@@ -6,6 +6,7 @@ import { TooltipProvider } from "@/components/ui/tooltip";
 import LanderPage from "@/pages/lander";
 import ChatPage from "@/pages/chat";
 import ConfirmationPage from "@/pages/confirmation";
+import ConfirmPendantPage from "@/pages/confirm-pendant";
 import NotFound from "@/pages/not-found";
 
 function Router() {
@@ -14,6 +15,7 @@ function Router() {
       <Route path="/" component={LanderPage} />
       <Route path="/chat" component={ChatPage} />
       <Route path="/confirmation/:sessionId" component={ConfirmationPage} />
+      <Route path="/confirm-pendant/:sessionId" component={ConfirmPendantPage} />
       {/* Fallback to 404 */}
       <Route component={NotFound} />
     </Switch>

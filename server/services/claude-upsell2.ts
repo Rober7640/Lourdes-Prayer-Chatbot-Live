@@ -123,7 +123,7 @@ function getMichaelStoryMessages(ctx: UpsellSessionContext): ScriptedMessage2 {
 
   return {
     messages,
-    image: "michael_pendant",
+    image: "st_michael_archangel",
     imageAfterMessage: 1,
     uiHint: "none",
   };

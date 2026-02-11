@@ -77,6 +77,7 @@ export type Upsell2UiHint =
 
 export type Upsell2Image =
   | "michael_pendant"
+  | "st_michael_archangel"
   | "testimonial_michael"
   | "testimonial_michael_self"
   | null;

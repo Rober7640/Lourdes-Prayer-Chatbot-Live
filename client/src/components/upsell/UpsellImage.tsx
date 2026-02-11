@@ -35,6 +35,10 @@ const IMAGE_SOURCES: Record<string, { src: string; alt: string }> = {
     src: "/images/michael-pendant.jpg",
     alt: "Archangel Michael Pendant — sterling silver with chain",
   },
+  st_michael_archangel: {
+    src: "/images/St-Michael-the-Archangel.jpeg",
+    alt: "Archangel Michael — the protector and defender",
+  },
   testimonial_michael: {
     src: "/images/testimonial-michael.png",
     alt: "Maria holding the Archangel Michael Pendant",
