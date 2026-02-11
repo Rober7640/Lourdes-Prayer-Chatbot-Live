@@ -51,6 +51,8 @@ export interface SessionContext {
   shippingState?: string | null;
   shippingPostalCode?: string | null;
   shippingCountry?: string | null;
+  // Facebook tracking - source URL for CAPI events
+  fbSourceUrl?: string | null;
   flags: {
     userNameCaptured: boolean;
     nameCaptured: boolean;

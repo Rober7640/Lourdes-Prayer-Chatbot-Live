@@ -523,10 +523,14 @@ export default function ChatPage() {
 
     try {
       setShowThinkingDots(true);
+
+      // Generate Lead event ID for deduplication
+      const leadEventId = generateFbEventId();
+
       const res = await fetch("/api/chat/email", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ sessionId, email, ...getFbFields() }),
+        body: JSON.stringify({ sessionId, email, ...getFbFields(leadEventId) }),
       });
 
       if (!res.ok) {
@@ -534,6 +538,9 @@ export default function ChatPage() {
       }
 
       const data = await res.json();
+
+      // Fire Lead event after email is successfully submitted (user added to AWeber/Sheets)
+      trackLead(leadEventId);
       setShowThinkingDots(false);
       setEmailInput("");
 
@@ -597,12 +604,6 @@ export default function ChatPage() {
 
       // Render response messages
       await renderMessages(data.messages, data.uiHint);
-
-      // Fire Lead pixel event when prayer is confirmed (readyForPayment means prayer was saved)
-      if (data.flags?.readyForPayment) {
-        const leadEventId = generateFbEventId();
-        trackLead(leadEventId);
-      }
 
       // If ready for payment but no photo/payment hint, use legacy transition
       // (This should rarely happen now that Claude handles the flow)

@@ -45,6 +45,8 @@ export const sessions = pgTable("sessions", {
   shippingState: varchar("shipping_state", { length: 100 }),
   shippingPostalCode: varchar("shipping_postal_code", { length: 20 }),
   shippingCountry: varchar("shipping_country", { length: 100 }),
+  // Facebook tracking - source URL for CAPI events
+  fbSourceUrl: varchar("fb_source_url", { length: 500 }),
 });
 
 export const insertSessionSchema = createInsertSchema(sessions).omit({

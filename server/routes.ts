@@ -1820,6 +1820,11 @@ export async function registerRoutes(
         return res.status(503).json({ error: "Payment system not configured" });
       }
 
+      // Store fbSourceUrl for webhook Purchase event
+      if (req.body.fbSourceUrl) {
+        updateSession(sessionId, { fbSourceUrl: req.body.fbSourceUrl });
+      }
+
       // Facebook CAPI InitiateCheckout event
       if (isFacebookEnabled() && req.body.fbEventId) {
         const fbData = extractFbRequestData(req);
@@ -2381,6 +2386,7 @@ export async function registerRoutes(
           eventId: result.paymentIntentId,
           email: session?.userEmail || undefined,
           userName: session?.userName || undefined,
+          sourceUrl: session?.fbSourceUrl || undefined,
           customData: { value: fbAmount, currency: "USD", content_type: "product", content_ids: [fbPurchaseType === "prayer" ? "prayer_petition" : `upsell_${fbPurchaseType}`] },
         }).catch((err) => console.error("Facebook CAPI Purchase (webhook) failed:", err));
       }
