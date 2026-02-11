@@ -180,7 +180,6 @@ function getListId(list: SubscriberList): string | null {
     upsell_candle: process.env.AWEBER_LIST_ID_UPSELL_CANDLE,
     upsell_pendant: process.env.AWEBER_LIST_ID_UPSELL_PENDANT,
   };
-  console.log(`[DEBUG] getListId('${list}') = ${listMap[list]}`);
   return listMap[list] || null;
 }
 
