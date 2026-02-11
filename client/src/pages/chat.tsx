@@ -265,44 +265,16 @@ export default function ChatPage() {
   // TYPING ANIMATION
   // ========================================================================
 
-  // Type out a single message character by character
+  // Show complete message with smooth animation (WhatsApp style)
   const typeMessage = useCallback(
     async (fullText: string): Promise<void> => {
       const messageId = uid("sm");
 
-      // Add empty typing bubble
+      // Add complete message directly (no character-by-character typing)
       setItems((prev) => [
         ...prev,
-        { id: messageId, role: "sm", kind: "typing", text: "", fullText },
+        { id: messageId, role: "sm", kind: "text", text: fullText },
       ]);
-
-      // Type each character
-      for (let i = 0; i <= fullText.length; i++) {
-        if (!isMountedRef.current) return;
-
-        const partialText = fullText.slice(0, i);
-
-        setItems((prev) =>
-          prev.map((item) =>
-            item.id === messageId && item.kind === "typing"
-              ? { ...item, text: partialText }
-              : item
-          )
-        );
-
-        if (i < fullText.length) {
-          await sleep(getCharacterDelay());
-        }
-      }
-
-      // Convert typing bubble to final text bubble
-      setItems((prev) =>
-        prev.map((item) =>
-          item.id === messageId
-            ? { id: messageId, role: "sm" as const, kind: "text" as const, text: fullText }
-            : item
-        )
-      );
     },
     []
   );
@@ -1016,7 +988,6 @@ export default function ChatPage() {
                     <AvatarSm />
                     <Bubble role="sm">
                       <span>{it.text}</span>
-                      <span className="inline-block w-0.5 h-4 bg-foreground/60 ml-0.5 animate-pulse" />
                     </Bubble>
                   </div>
                 );
@@ -1348,11 +1319,11 @@ export default function ChatPage() {
                 );
               }
 
-              // Text bubble (completed message)
+              // Text bubble (completed message with smooth fade-in)
               return (
                 <div
                   key={it.id}
-                  className={isSm ? "flex items-end gap-3" : "flex"}
+                  className={isSm ? "flex items-end gap-3 animate-in fade-in slide-in-from-bottom-2 duration-300" : "flex animate-in fade-in slide-in-from-bottom-2 duration-300"}
                 >
                   {isSm ? <AvatarSm /> : null}
                   <Bubble role={it.role}>

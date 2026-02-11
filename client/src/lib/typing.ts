@@ -19,21 +19,30 @@ export function generateId(): string {
  * Returns ms per character with natural variance
  */
 export function getCharacterDelay(): number {
-  return 0 // Disabled for testing
+  const baseDelay = 70;   // ms per character
+  const variance = 35;    // random variance
+  // Result: 70-105ms per character
+  return baseDelay + Math.random() * variance;
 }
 
 /**
  * Calculate pause between consecutive messages
  */
 export function calculatePauseBetweenMessages(): number {
-  return 0 // Disabled for testing
+  const basePause = 1500;  // 1.5 seconds
+  const variance = 800;    // random variance
+  // Result: 1.5-2.3 seconds between bubbles
+  return basePause + Math.random() * variance;
 }
 
 /**
  * Calculate initial "thinking" delay before typing starts
  */
 export function calculateThinkingDelay(): number {
-  return 0 // Disabled for testing
+  const baseDelay = 2000;  // 2 seconds
+  const variance = 1000;   // random variance
+  // Result: 2-3 seconds before typing starts
+  return baseDelay + Math.random() * variance;
 }
 
 /**
