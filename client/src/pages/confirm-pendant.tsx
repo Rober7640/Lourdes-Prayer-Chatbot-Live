@@ -352,7 +352,7 @@ export default function ConfirmPendantPage() {
 
         // Auto-advance if needed
         if (upsell2Data.uiHint === "none" && upsell2Data.phase !== "complete_2" && upsell2Data.phase !== "the_ask_2") {
-          await advanceUpsell2();
+          await advanceUpsell2(sessionData.upsellSessionId);
         }
       } catch (err) {
         console.error("Failed to load pendant page:", err);
@@ -365,8 +365,9 @@ export default function ConfirmPendantPage() {
   }, [sessionId, renderMessages]);
 
   // Auto-advance Upsell 2 to next phase
-  async function advanceUpsell2() {
-    if (!upsellSessionId) return;
+  async function advanceUpsell2(sessionId?: string) {
+    const activeSessionId = sessionId || upsellSessionId;
+    if (!activeSessionId) return;
 
     try {
       await sleep(800);
@@ -375,7 +376,7 @@ export default function ConfirmPendantPage() {
       const res = await fetch("/api/upsell2/advance", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ upsellSessionId }),
+        body: JSON.stringify({ upsellSessionId: activeSessionId }),
       });
 
       if (!res.ok) {
@@ -390,7 +391,7 @@ export default function ConfirmPendantPage() {
 
         // Continue auto-advancing if appropriate
         if (data.uiHint === "none" && data.phase !== "complete_2" && data.phase !== "the_ask_2") {
-          await advanceUpsell2();
+          await advanceUpsell2(activeSessionId);
         }
       }
     } catch (err) {
