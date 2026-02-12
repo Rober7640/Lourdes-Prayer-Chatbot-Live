@@ -418,8 +418,14 @@ export default function ConfirmationPage() {
     try {
       setShowThinkingDots(true);
 
-      // For accept_medal: charge payment FIRST, then get messages
+      // For accept_medal: show user bubble, charge payment FIRST, then get messages
       if (action === "accept_medal") {
+        // Show user message immediately
+        setItems((prev) => [
+          ...prev,
+          { id: uid("user"), role: "user", kind: "text", text: "Yes – Send me the Medal" },
+        ]);
+
         // 1. Call charge endpoint immediately
         const chargeRes = await fetch("/api/upsell/medal-charge", {
           method: "POST",

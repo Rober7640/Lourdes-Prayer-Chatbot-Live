@@ -1262,6 +1262,14 @@ export async function registerRoutes(
         if (result.success) {
           console.log(`Medal charge-first successful: ${result.paymentIntentId}`);
 
+          // Add to AWeber medal list immediately (shipping updated later)
+          if (originalSession.userEmail && isAweberEnabled()) {
+            addToCustomerList(originalSession.userEmail, "medal", {
+              name: originalSession.userName || undefined,
+              stripePaymentId: result.paymentIntentId || undefined,
+            }).catch((err) => console.error("AWeber medal list add at charge failed:", err));
+          }
+
           // Facebook CAPI Purchase event
           if (isFacebookEnabled() && result.paymentIntentId) {
             const fbData = extractFbRequestData(req);
@@ -1391,21 +1399,16 @@ export async function registerRoutes(
         }).catch((err) => console.error("Failed to update Stripe shipping:", err));
       }
 
-      // Add to AWeber upsell list + update shipping address
+      // Update shipping address on AWeber (contact already added at charge time)
       if (originalSession.userEmail && isAweberEnabled()) {
-        addToCustomerList(originalSession.userEmail, "medal", {
-          name: originalSession.userName || undefined,
-          stripePaymentId: paymentIntentId || undefined,
-        }).then(() => {
-          return updateMedalShippingAddress(originalSession.userEmail!, {
-            name: shipping.name,
-            addressLine1: shipping.address1,
-            addressLine2: shipping.address2 || null,
-            city: shipping.city,
-            state: shipping.state || null,
-            postalCode: shipping.postal,
-            country: shipping.country,
-          });
+        updateMedalShippingAddress(originalSession.userEmail, {
+          name: shipping.name,
+          addressLine1: shipping.address1,
+          addressLine2: shipping.address2 || null,
+          city: shipping.city,
+          state: shipping.state || null,
+          postalCode: shipping.postal,
+          country: shipping.country,
         }).catch((err) => console.error("AWeber medal shipping update failed:", err));
       }
 
@@ -1460,7 +1463,7 @@ export async function registerRoutes(
               }).catch((err) => console.error("Failed to update Stripe shipping for pendant:", err));
             }
 
-            // Add to AWeber pendant list with shipping
+            // Add to AWeber pendant list with shipping address
             if (originalSession.userEmail && isAweberEnabled()) {
               const addressParts = [
                 originalSession.shippingName,
@@ -1474,6 +1477,14 @@ export async function registerRoutes(
                 stripePaymentId: result.paymentIntentId || undefined,
                 shippingAddress: addressParts.join(", "),
               }).catch((err) => console.error("AWeber pendant list add failed:", err));
+            }
+          } else {
+            // Shipping NOT yet collected — add to AWeber now, shipping updated later
+            if (originalSession.userEmail && isAweberEnabled()) {
+              addToCustomerList(originalSession.userEmail, "pendant", {
+                name: originalSession.userName || undefined,
+                stripePaymentId: result.paymentIntentId || undefined,
+              }).catch((err) => console.error("AWeber pendant list add at charge failed:", err));
             }
           }
 
@@ -1611,21 +1622,16 @@ export async function registerRoutes(
         }).catch((err) => console.error("Failed to update Stripe shipping for pendant:", err));
       }
 
-      // Add to AWeber pendant list + update shipping address
+      // Update shipping address on AWeber (contact already added at charge time)
       if (originalSession.userEmail && isAweberEnabled()) {
-        addToCustomerList(originalSession.userEmail, "pendant", {
-          name: originalSession.userName || undefined,
-          stripePaymentId: paymentIntentId || undefined,
-        }).then(() => {
-          return updatePendantShippingAddress(originalSession.userEmail!, {
-            name: shipping.name,
-            addressLine1: shipping.address1,
-            addressLine2: shipping.address2 || null,
-            city: shipping.city,
-            state: shipping.state || null,
-            postalCode: shipping.postal,
-            country: shipping.country,
-          });
+        updatePendantShippingAddress(originalSession.userEmail, {
+          name: shipping.name,
+          addressLine1: shipping.address1,
+          addressLine2: shipping.address2 || null,
+          city: shipping.city,
+          state: shipping.state || null,
+          postalCode: shipping.postal,
+          country: shipping.country,
         }).catch((err) => console.error("AWeber pendant shipping update failed:", err));
       }
 

@@ -415,8 +415,14 @@ export default function ConfirmPendantPage() {
     try {
       setShowThinkingDots(true);
 
-      // For accept_pendant: charge payment FIRST
+      // For accept_pendant: show user bubble, charge payment FIRST
       if (action === "accept_pendant") {
+        // Show user message immediately
+        setItems((prev) => [
+          ...prev,
+          { id: uid("user"), role: "user", kind: "text", text: "Yes, Add the Pendant" },
+        ]);
+
         // 1. Charge payment immediately
         const chargeRes = await fetch("/api/upsell2/pendant-charge", {
           method: "POST",
