@@ -217,21 +217,23 @@ export default function ChatPage() {
     if (!isMountedRef.current) return;
     setShowThinkingDots(false);
 
+    const softCloseMsg1 = "I understand if now isn't the right time.";
     setItems((prev) => [
       ...prev,
-      { id: uid("sm"), role: "sm", kind: "text", text: "I understand if now isn't the right time." },
+      { id: uid("sm"), role: "sm", kind: "text", text: softCloseMsg1 },
     ]);
     setShowThinkingDots(true);
-    await sleep(calculatePauseBetweenMessages());
+    await sleep(calculatePauseBetweenMessages(softCloseMsg1));
     if (!isMountedRef.current) return;
     setShowThinkingDots(false);
 
+    const softCloseMsg2 = `Your prayer for ${name} is saved. You can return anytime, or check your email.`;
     setItems((prev) => [
       ...prev,
-      { id: uid("sm"), role: "sm", kind: "text", text: `Your prayer for ${name} is saved. You can return anytime, or check your email.` },
+      { id: uid("sm"), role: "sm", kind: "text", text: softCloseMsg2 },
     ]);
     setShowThinkingDots(true);
-    await sleep(calculatePauseBetweenMessages());
+    await sleep(calculatePauseBetweenMessages(softCloseMsg2));
     if (!isMountedRef.current) return;
     setShowThinkingDots(false);
 
@@ -332,10 +334,10 @@ export default function ChatPage() {
 
         await typeMessage(messages[i]);
 
-        // Pause between messages
+        // Pause between messages (length-aware: longer messages get more reading time)
         if (i < messages.length - 1) {
           setShowThinkingDots(true);
-          await sleep(calculatePauseBetweenMessages());
+          await sleep(calculatePauseBetweenMessages(messages[i]));
           if (!isMountedRef.current) return;
           setShowThinkingDots(false);
         }
@@ -377,41 +379,21 @@ export default function ChatPage() {
           setShowThinkingDots(false);
 
           // Continue with remaining explanation
-          await typeMessage("You'll receive photos of your prayer at the holy site, sent directly to your email after our visit.");
-          setShowThinkingDots(true);
-          await sleep(calculatePauseBetweenMessages());
-          if (!isMountedRef.current) return;
-          setShowThinkingDots(false);
-
-          await typeMessage("Our team lovingly hand-delivers each prayer to the Grotto. We only ask for a small amount to help cover the time, care, and materials involved.");
-          setShowThinkingDots(true);
-          await sleep(calculatePauseBetweenMessages());
-          if (!isMountedRef.current) return;
-          setShowThinkingDots(false);
-
-          await typeMessage("The full cost to provide this sacred service is $35 per prayer.");
-          setShowThinkingDots(true);
-          await sleep(calculatePauseBetweenMessages());
-          if (!isMountedRef.current) return;
-          setShowThinkingDots(false);
-
-          await typeMessage("If you're facing financial hardship, you're still welcome to participate — choose the amount that's right for you.");
-          setShowThinkingDots(true);
-          await sleep(calculatePauseBetweenMessages());
-          if (!isMountedRef.current) return;
-          setShowThinkingDots(false);
-
-          await typeMessage("If you're able, consider giving more to help cover the cost for others who cannot.");
-          setShowThinkingDots(true);
-          await sleep(calculatePauseBetweenMessages());
-          if (!isMountedRef.current) return;
-          setShowThinkingDots(false);
-
-          await typeMessage("Every amount helps us bring more prayers to Lourdes — as one Body in Christ.");
-          setShowThinkingDots(true);
-          await sleep(calculatePauseBetweenMessages());
-          if (!isMountedRef.current) return;
-          setShowThinkingDots(false);
+          const petitionMessages = [
+            "You'll receive photos of your prayer at the holy site, sent directly to your email after our visit.",
+            "Our team lovingly hand-delivers each prayer to the Grotto. We only ask for a small amount to help cover the time, care, and materials involved.",
+            "The full cost to provide this sacred service is $35 per prayer.",
+            "If you're facing financial hardship, you're still welcome to participate — choose the amount that's right for you.",
+            "If you're able, consider giving more to help cover the cost for others who cannot.",
+            "Every amount helps us bring more prayers to Lourdes — as one Body in Christ.",
+          ];
+          for (const msg of petitionMessages) {
+            await typeMessage(msg);
+            setShowThinkingDots(true);
+            await sleep(calculatePauseBetweenMessages(msg));
+            if (!isMountedRef.current) return;
+            setShowThinkingDots(false);
+          }
 
           // Show payment card
           setItems((prev) => [

@@ -243,7 +243,7 @@ export default function ConfirmationPage() {
 
         // Check if image should appear after this message (1-indexed)
         if (image && imageAfterMessage && imageAfterMessage === i + 1) {
-          await sleep(calculatePauseBetweenMessages());
+          await sleep(calculatePauseBetweenMessages(messages[i]));
           if (!isMountedRef.current) return;
           setItems((prev) => [
             ...prev,
@@ -253,7 +253,7 @@ export default function ConfirmationPage() {
 
         if (i < messages.length - 1) {
           setShowThinkingDots(true);
-          await sleep(calculatePauseBetweenMessages());
+          await sleep(calculatePauseBetweenMessages(messages[i]));
           if (!isMountedRef.current) return;
           setShowThinkingDots(false);
         }
@@ -261,7 +261,7 @@ export default function ConfirmationPage() {
 
       // Show image after all messages if no specific position set
       if (image && !imageAfterMessage) {
-        await sleep(calculatePauseBetweenMessages());
+        await sleep(calculatePauseBetweenMessages(messages[messages.length - 1]));
         if (!isMountedRef.current) return;
         setItems((prev) => [
           ...prev,

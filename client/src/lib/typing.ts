@@ -27,21 +27,30 @@ export function getCharacterDelay(): number {
 
 /**
  * Calculate pause between consecutive messages
+ * Optionally pass the previous message text for length-aware pacing
  */
-export function calculatePauseBetweenMessages(): number {
-  const basePause = 1500;  // 1.5 seconds
-  const variance = 800;    // random variance
-  // Result: 1.5-2.3 seconds between bubbles
-  return basePause + Math.random() * variance;
+export function calculatePauseBetweenMessages(previousMessage?: string): number {
+  const basePause = 2500;  // 2.5 seconds
+  const variance = 1500;   // random variance
+  // Result: 2.5-4 seconds between bubbles
+  let pause = basePause + Math.random() * variance;
+
+  // Add extra time for longer messages so user can read them
+  if (previousMessage) {
+    const wordCount = previousMessage.split(' ').length;
+    pause += wordCount * 30; // +30ms per word
+  }
+
+  return pause;
 }
 
 /**
  * Calculate initial "thinking" delay before typing starts
  */
 export function calculateThinkingDelay(): number {
-  const baseDelay = 2000;  // 2 seconds
-  const variance = 1000;   // random variance
-  // Result: 2-3 seconds before typing starts
+  const baseDelay = 3000;  // 3 seconds
+  const variance = 2000;   // random variance
+  // Result: 3-5 seconds before typing starts
   return baseDelay + Math.random() * variance;
 }
 
