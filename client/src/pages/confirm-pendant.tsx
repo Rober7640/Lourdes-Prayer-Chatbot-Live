@@ -245,7 +245,7 @@ export default function ConfirmPendantPage() {
 
       // Handle UI hints after messages and image
       if (uiHint && uiHint !== "none") {
-        await sleep(calculatePauseBetweenMessages());
+        await sleep(calculatePauseBetweenMessages(messages[messages.length - 1]));
         if (!isMountedRef.current) return;
 
         if (uiHint === "show_pendant_offer" || uiHint === "show_pendant_offer_self") {

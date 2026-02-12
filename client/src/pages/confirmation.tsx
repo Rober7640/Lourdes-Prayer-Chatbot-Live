@@ -271,7 +271,7 @@ export default function ConfirmationPage() {
 
       // Handle UI hints after messages and image
       if (uiHint && uiHint !== "none") {
-        await sleep(calculatePauseBetweenMessages());
+        await sleep(calculatePauseBetweenMessages(messages[messages.length - 1]));
         if (!isMountedRef.current) return;
 
         if (uiHint === "continue_or_go") {

@@ -346,7 +346,7 @@ export default function ChatPage() {
       // Handle UI hints
       if (uiHint && uiHint !== "none") {
         setShowThinkingDots(true);
-        await sleep(calculatePauseBetweenMessages());
+        await sleep(calculatePauseBetweenMessages(messages[messages.length - 1]));
         if (!isMountedRef.current) return;
         setShowThinkingDots(false);
 
@@ -374,7 +374,7 @@ export default function ChatPage() {
             },
           ]);
           setShowThinkingDots(true);
-          await sleep(calculatePauseBetweenMessages());
+          await sleep(calculatePauseBetweenMessages(messages[messages.length - 1]));
           if (!isMountedRef.current) return;
           setShowThinkingDots(false);
 
@@ -731,7 +731,7 @@ export default function ChatPage() {
             "Please provide your shipping address so we can send it to you.",
           ]);
           setShowThinkingDots(true);
-          await sleep(calculatePauseBetweenMessages());
+          await sleep(calculatePauseBetweenMessages("Please provide your shipping address so we can send it to you."));
           if (!isMountedRef.current) return;
           setShowThinkingDots(false);
           setItems((prev) => [
@@ -801,7 +801,7 @@ export default function ChatPage() {
           "Many pilgrims also light a candle at the Grotto. It burns for days, a continuous prayer.",
         ]);
         setShowThinkingDots(true);
-        await sleep(calculatePauseBetweenMessages());
+        await sleep(calculatePauseBetweenMessages("Many pilgrims also light a candle at the Grotto. It burns for days, a continuous prayer."));
         if (!isMountedRef.current) return;
         setShowThinkingDots(false);
         setItems((prev) => [
@@ -836,7 +836,7 @@ export default function ChatPage() {
         "Many pilgrims also light a candle at the Grotto. It burns for days, a continuous prayer.",
       ]);
       setShowThinkingDots(true);
-      await sleep(calculatePauseBetweenMessages());
+      await sleep(calculatePauseBetweenMessages("Many pilgrims also light a candle at the Grotto. It burns for days, a continuous prayer."));
       if (!isMountedRef.current) return;
       setShowThinkingDots(false);
       setItems((prev) => [
@@ -861,7 +861,7 @@ export default function ChatPage() {
       "May Our Lady's blessing be upon you.",
     ]);
     setShowThinkingDots(true);
-    await sleep(calculatePauseBetweenMessages());
+    await sleep(calculatePauseBetweenMessages("May Our Lady's blessing be upon you."));
     if (!isMountedRef.current) return;
     setShowThinkingDots(false);
     setItems((prev) => [

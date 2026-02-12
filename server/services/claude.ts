@@ -278,9 +278,44 @@ export function classifyPrayerIntent(message: string, subPhase: PrayerSubPhase):
     }
   }
 
-  // Check each pattern category (skip modify since we already checked it)
+  // Sub-phase-aware checks BEFORE generic pattern matching
+  // At simple_offered: affirmative = "yes show me detailed", not "confirm prayer"
+  if (subPhase === "simple_offered") {
+    if (/^(ok|okay|sure|yep|yeah|yes|absolutely|definitely|please)\.?$/i.test(trimmed) ||
+        /^yes[,.]?\s/i.test(trimmed)) {
+      return "choose_detailed";
+    }
+  }
+
+  // At both_offered: "first"/"second" takes priority
+  if (subPhase === "both_offered") {
+    if (/^(the )?(first|1|one)\.?$/i.test(trimmed)) return "choose_simple";
+    if (/^(the )?(second|2|two)\.?$/i.test(trimmed)) return "choose_detailed";
+  }
+
+  // Check choose_simple and choose_detailed BEFORE confirm to prevent misclassification
+  for (const pattern of PRAYER_INTENT_PATTERNS.choose_simple) {
+    if (pattern.test(trimmed)) return "choose_simple";
+  }
+  for (const pattern of PRAYER_INTENT_PATTERNS.choose_detailed) {
+    if (pattern.test(trimmed)) return "choose_detailed";
+  }
+  for (const pattern of PRAYER_INTENT_PATTERNS.combine) {
+    if (pattern.test(trimmed)) return "combine";
+  }
+
+  // Only allow generic confirm patterns at sub-phases where confirmation makes sense
+  if (subPhase === "awaiting_confirm" || subPhase === "detailed_offered") {
+    for (const pattern of PRAYER_INTENT_PATTERNS.confirm) {
+      if (pattern.test(trimmed)) {
+        return "confirm";
+      }
+    }
+  }
+
+  // Check remaining patterns (reject, write_own)
   for (const [intent, patterns] of Object.entries(PRAYER_INTENT_PATTERNS)) {
-    if (intent === "modify") continue; // Already checked above
+    if (["modify", "choose_simple", "choose_detailed", "combine", "confirm"].includes(intent)) continue;
     for (const pattern of patterns) {
       if (pattern.test(trimmed)) {
         return intent as PrayerIntent;
@@ -290,16 +325,9 @@ export function classifyPrayerIntent(message: string, subPhase: PrayerSubPhase):
 
   // Context-aware defaults for short responses
   if (subPhase === "awaiting_confirm") {
-    // Only treat "yes" as confirm when user is explicitly confirming their chosen prayer
     if (/^(ok|okay|sure|yep|yeah|yes|absolutely|definitely|please)\.?$/i.test(trimmed)) {
       return "confirm";
     }
-  }
-
-  if (subPhase === "both_offered") {
-    // If they just say "first" or "second" when choosing
-    if (/^(the )?(first|1|one)\.?$/i.test(trimmed)) return "choose_simple";
-    if (/^(the )?(second|2|two)\.?$/i.test(trimmed)) return "choose_detailed";
   }
 
   return "unclear";
