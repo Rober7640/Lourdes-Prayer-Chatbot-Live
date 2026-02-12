@@ -175,6 +175,7 @@ export default function ChatPage() {
   // Ref to track if component is mounted (for async operations)
   const isMountedRef = useRef(true);
   const scrollRef = useRef<HTMLDivElement | null>(null);
+  const bottomRef = useRef<HTMLDivElement | null>(null);
   const paymentIdleTimerRef = useRef<NodeJS.Timeout | null>(null);
 
   // Cleanup on unmount
@@ -264,12 +265,10 @@ export default function ChatPage() {
 
   // Auto-scroll when items change
   useEffect(() => {
-    requestAnimationFrame(() => {
-      scrollRef.current?.scrollTo({
-        top: scrollRef.current.scrollHeight,
-        behavior: "smooth",
-      });
-    });
+    const timer = setTimeout(() => {
+      bottomRef.current?.scrollIntoView({ behavior: "smooth", block: "end" });
+    }, 80);
+    return () => clearTimeout(timer);
   }, [items, showThinkingDots]);
 
   // ========================================================================
@@ -1379,6 +1378,9 @@ export default function ChatPage() {
               <TypingDots />
             </div>
           ) : null}
+
+          {/* Scroll anchor */}
+          <div ref={bottomRef} />
         </div>
 
         {/* Composer */}
