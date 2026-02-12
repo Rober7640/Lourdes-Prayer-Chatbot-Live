@@ -74,6 +74,7 @@ import {
   isAweberEnabled,
   parseMagicLinkToken,
   updateMedalShippingAddress,
+  updatePendantShippingAddress,
 } from "./services/aweber";
 import {
   isGoogleSheetsEnabled,
@@ -1224,6 +1225,414 @@ export async function registerRoutes(
     } catch (error) {
       console.error("Error processing medal order:", error);
       res.status(500).json({ error: "Failed to process medal order" });
+    }
+  });
+
+  // ========================================================================
+  // CHARGE-FIRST UPSELL ENDPOINTS
+  // ========================================================================
+
+  /**
+   * POST /api/upsell/medal-charge
+   * Charge medal payment only (no shipping). Called when user clicks accept.
+   */
+  app.post("/api/upsell/medal-charge", async (req, res) => {
+    try {
+      const { upsellSessionId } = req.body;
+
+      if (!upsellSessionId) {
+        return res.status(400).json({ error: "Missing upsellSessionId" });
+      }
+
+      const session = getUpsellSession(upsellSessionId);
+      if (!session) {
+        return res.status(404).json({ error: "Upsell session not found" });
+      }
+
+      const originalSessionId = session.sessionId;
+      const originalSession = getSession(originalSessionId);
+      if (!originalSession) {
+        return res.status(404).json({ error: "Original session not found" });
+      }
+
+      // Try one-click charge
+      if (isStripeEnabled()) {
+        const result = await chargeOneClickUpsell({ sessionId: originalSessionId, upsellType: "medal" });
+
+        if (result.success) {
+          console.log(`Medal charge-first successful: ${result.paymentIntentId}`);
+
+          // Facebook CAPI Purchase event
+          if (isFacebookEnabled() && result.paymentIntentId) {
+            const fbData = extractFbRequestData(req);
+            sendEvent({
+              eventName: "Purchase",
+              eventId: result.paymentIntentId,
+              email: originalSession.userEmail || undefined,
+              userName: originalSession.userName || undefined,
+              ...fbData,
+              customData: { value: 79, currency: "USD", content_type: "product", content_ids: ["upsell_medal"] },
+            }).catch((err) => console.error("Facebook CAPI Purchase (medal-charge) failed:", err));
+          }
+
+          // Set purchase type and phase
+          setPurchaseType(upsellSessionId, "medal");
+          setUpsellPhase(upsellSessionId, "complete");
+
+          return res.json({
+            success: true,
+            paymentIntentId: result.paymentIntentId,
+          });
+        }
+
+        // One-click failed — create Stripe checkout session (no shipping collection)
+        console.log("Medal charge-first failed, creating checkout fallback");
+        const baseUrl = `${req.protocol}://${req.get("host")}`;
+        const successUrl = `${baseUrl}/confirmation/${originalSessionId}?upsell=medal`;
+        const cancelUrl = `${baseUrl}/confirmation/${originalSessionId}`;
+
+        const checkoutResult = await createUpsellCheckoutSession({
+          sessionId: originalSessionId,
+          upsellType: "medal",
+          email: originalSession.userEmail!,
+          successUrl,
+          cancelUrl,
+          requiresShipping: false,
+        });
+
+        if (!checkoutResult) {
+          return res.status(500).json({ error: "Failed to create checkout session" });
+        }
+
+        return res.json({
+          success: false,
+          requiresCheckout: true,
+          checkoutUrl: checkoutResult.url,
+        });
+      }
+
+      // Stripe not enabled
+      console.log("Stripe not enabled, medal charge logged only");
+      setPurchaseType(upsellSessionId, "medal");
+      setUpsellPhase(upsellSessionId, "complete");
+
+      res.json({ success: true, paymentIntentId: null });
+    } catch (error) {
+      console.error("Error processing medal charge:", error);
+      res.status(500).json({ error: "Failed to process medal charge" });
+    }
+  });
+
+  /**
+   * POST /api/upsell/medal-shipping
+   * Save medal shipping address (after payment already charged)
+   */
+  app.post("/api/upsell/medal-shipping", async (req, res) => {
+    try {
+      const { upsellSessionId, shipping, paymentIntentId } = req.body;
+
+      if (!upsellSessionId || !shipping) {
+        return res.status(400).json({ error: "Missing upsellSessionId or shipping" });
+      }
+
+      const session = getUpsellSession(upsellSessionId);
+      if (!session) {
+        return res.status(404).json({ error: "Upsell session not found" });
+      }
+
+      // Validate shipping fields
+      const requiredFields = ["name", "address1", "city", "postal", "country"];
+      for (const field of requiredFields) {
+        if (!shipping[field]) {
+          return res.status(400).json({ error: `Missing shipping ${field}` });
+        }
+      }
+
+      const originalSessionId = session.sessionId;
+      const originalSession = getSession(originalSessionId);
+      if (!originalSession) {
+        return res.status(404).json({ error: "Original session not found" });
+      }
+
+      // Save shipping address to session & database
+      updateSession(originalSessionId, {
+        shippingName: shipping.name,
+        shippingAddressLine1: shipping.address1,
+        shippingAddressLine2: shipping.address2 || null,
+        shippingCity: shipping.city,
+        shippingState: shipping.state || null,
+        shippingPostalCode: shipping.postal,
+        shippingCountry: shipping.country,
+      });
+
+      const DB_ENABLED = !!process.env.DATABASE_URL;
+      if (DB_ENABLED) {
+        dbStorage.updateSession(originalSessionId, {
+          shippingName: shipping.name,
+          shippingAddressLine1: shipping.address1,
+          shippingAddressLine2: shipping.address2 || null,
+          shippingCity: shipping.city,
+          shippingState: shipping.state || null,
+          shippingPostalCode: shipping.postal,
+          shippingCountry: shipping.country,
+        }).catch((err) => console.error("Failed to save medal shipping to DB:", err));
+      }
+
+      // Update Stripe PaymentIntent with shipping address
+      if (paymentIntentId) {
+        updatePaymentIntentShipping(paymentIntentId, {
+          name: shipping.name,
+          addressLine1: shipping.address1,
+          addressLine2: shipping.address2 || null,
+          city: shipping.city,
+          state: shipping.state || null,
+          postalCode: shipping.postal,
+          country: shipping.country,
+        }).catch((err) => console.error("Failed to update Stripe shipping:", err));
+      }
+
+      // Add to AWeber upsell list + update shipping address
+      if (originalSession.userEmail && isAweberEnabled()) {
+        addToCustomerList(originalSession.userEmail, "medal", {
+          name: originalSession.userName || undefined,
+          stripePaymentId: paymentIntentId || undefined,
+        }).then(() => {
+          return updateMedalShippingAddress(originalSession.userEmail!, {
+            name: shipping.name,
+            addressLine1: shipping.address1,
+            addressLine2: shipping.address2 || null,
+            city: shipping.city,
+            state: shipping.state || null,
+            postalCode: shipping.postal,
+            country: shipping.country,
+          });
+        }).catch((err) => console.error("AWeber medal shipping update failed:", err));
+      }
+
+      return res.json({ success: true });
+    } catch (error) {
+      console.error("Error saving medal shipping:", error);
+      res.status(500).json({ error: "Failed to save medal shipping" });
+    }
+  });
+
+  /**
+   * POST /api/upsell2/pendant-charge
+   * Charge pendant payment only. Called when user clicks accept.
+   */
+  app.post("/api/upsell2/pendant-charge", async (req, res) => {
+    try {
+      const { upsellSessionId } = req.body;
+
+      if (!upsellSessionId) {
+        return res.status(400).json({ error: "Missing upsellSessionId" });
+      }
+
+      const session = getUpsellSession(upsellSessionId);
+      if (!session) {
+        return res.status(404).json({ error: "Upsell session not found" });
+      }
+
+      const originalSessionId = session.sessionId;
+      const originalSession = getSession(originalSessionId);
+      if (!originalSession) {
+        return res.status(404).json({ error: "Original session not found" });
+      }
+
+      // Try one-click charge
+      if (isStripeEnabled()) {
+        const result = await chargeOneClickUpsell({ sessionId: originalSessionId, upsellType: "pendant" });
+
+        if (result.success) {
+          console.log(`Pendant charge-first successful: ${result.paymentIntentId}`);
+
+          // If shipping already collected (from medal), save it to Stripe payment intent
+          if (session.upsell2Flags.shippingAlreadyCollected && originalSession.shippingName) {
+            if (result.paymentIntentId) {
+              updatePaymentIntentShipping(result.paymentIntentId, {
+                name: originalSession.shippingName,
+                addressLine1: originalSession.shippingAddressLine1 || "",
+                addressLine2: originalSession.shippingAddressLine2 || null,
+                city: originalSession.shippingCity || "",
+                state: originalSession.shippingState || null,
+                postalCode: originalSession.shippingPostalCode || "",
+                country: originalSession.shippingCountry || "",
+              }).catch((err) => console.error("Failed to update Stripe shipping for pendant:", err));
+            }
+
+            // Add to AWeber pendant list with shipping
+            if (originalSession.userEmail && isAweberEnabled()) {
+              const addressParts = [
+                originalSession.shippingName,
+                originalSession.shippingAddressLine1,
+                originalSession.shippingAddressLine2,
+                `${originalSession.shippingCity || ""}, ${originalSession.shippingState || ""} ${originalSession.shippingPostalCode || ""}`.trim(),
+                originalSession.shippingCountry,
+              ].filter(Boolean);
+              addToCustomerList(originalSession.userEmail, "pendant", {
+                name: originalSession.userName || undefined,
+                stripePaymentId: result.paymentIntentId || undefined,
+                shippingAddress: addressParts.join(", "),
+              }).catch((err) => console.error("AWeber pendant list add failed:", err));
+            }
+          }
+
+          // Facebook CAPI Purchase event
+          if (isFacebookEnabled() && result.paymentIntentId) {
+            const fbData = extractFbRequestData(req);
+            sendEvent({
+              eventName: "Purchase",
+              eventId: result.paymentIntentId,
+              email: originalSession.userEmail || undefined,
+              userName: originalSession.userName || undefined,
+              ...fbData,
+              customData: { value: 49, currency: "USD", content_type: "product", content_ids: ["upsell_pendant"] },
+            }).catch((err) => console.error("Facebook CAPI Purchase (pendant-charge) failed:", err));
+          }
+
+          // Set purchase type and phase
+          setUpsell2PurchaseType(upsellSessionId, "pendant");
+          setUpsell2Phase(upsellSessionId, "complete_2");
+
+          return res.json({
+            success: true,
+            paymentIntentId: result.paymentIntentId,
+            shippingAlreadyCollected: session.upsell2Flags.shippingAlreadyCollected,
+          });
+        }
+
+        // One-click failed — create Stripe checkout session (no shipping collection)
+        console.log("Pendant charge-first failed, creating checkout fallback");
+        const baseUrl = `${req.protocol}://${req.get("host")}`;
+        const successUrl = `${baseUrl}/confirm-pendant/${originalSessionId}?upsell=pendant`;
+        const cancelUrl = `${baseUrl}/confirm-pendant/${originalSessionId}`;
+
+        const checkoutResult = await createUpsellCheckoutSession({
+          sessionId: originalSessionId,
+          upsellType: "pendant",
+          email: originalSession.userEmail!,
+          successUrl,
+          cancelUrl,
+          requiresShipping: false,
+        });
+
+        if (!checkoutResult) {
+          return res.status(500).json({ error: "Failed to create checkout session" });
+        }
+
+        return res.json({
+          success: false,
+          requiresCheckout: true,
+          checkoutUrl: checkoutResult.url,
+        });
+      }
+
+      // Stripe not enabled
+      console.log("Stripe not enabled, pendant charge logged only");
+      setUpsell2PurchaseType(upsellSessionId, "pendant");
+      setUpsell2Phase(upsellSessionId, "complete_2");
+
+      res.json({
+        success: true,
+        paymentIntentId: null,
+        shippingAlreadyCollected: session.upsell2Flags.shippingAlreadyCollected,
+      });
+    } catch (error) {
+      console.error("Error processing pendant charge:", error);
+      res.status(500).json({ error: "Failed to process pendant charge" });
+    }
+  });
+
+  /**
+   * POST /api/upsell2/pendant-shipping
+   * Save pendant shipping address (after payment already charged)
+   */
+  app.post("/api/upsell2/pendant-shipping", async (req, res) => {
+    try {
+      const { upsellSessionId, shipping, paymentIntentId } = req.body;
+
+      if (!upsellSessionId || !shipping) {
+        return res.status(400).json({ error: "Missing upsellSessionId or shipping" });
+      }
+
+      const session = getUpsellSession(upsellSessionId);
+      if (!session) {
+        return res.status(404).json({ error: "Upsell session not found" });
+      }
+
+      // Validate shipping fields
+      const requiredFields = ["name", "address1", "city", "postal", "country"];
+      for (const field of requiredFields) {
+        if (!shipping[field]) {
+          return res.status(400).json({ error: `Missing shipping ${field}` });
+        }
+      }
+
+      const originalSessionId = session.sessionId;
+      const originalSession = getSession(originalSessionId);
+      if (!originalSession) {
+        return res.status(404).json({ error: "Original session not found" });
+      }
+
+      // Save shipping address to session & database
+      updateSession(originalSessionId, {
+        shippingName: shipping.name,
+        shippingAddressLine1: shipping.address1,
+        shippingAddressLine2: shipping.address2 || null,
+        shippingCity: shipping.city,
+        shippingState: shipping.state || null,
+        shippingPostalCode: shipping.postal,
+        shippingCountry: shipping.country,
+      });
+
+      const DB_ENABLED = !!process.env.DATABASE_URL;
+      if (DB_ENABLED) {
+        dbStorage.updateSession(originalSessionId, {
+          shippingName: shipping.name,
+          shippingAddressLine1: shipping.address1,
+          shippingAddressLine2: shipping.address2 || null,
+          shippingCity: shipping.city,
+          shippingState: shipping.state || null,
+          shippingPostalCode: shipping.postal,
+          shippingCountry: shipping.country,
+        }).catch((err) => console.error("Failed to save pendant shipping to DB:", err));
+      }
+
+      // Update Stripe PaymentIntent with shipping address
+      if (paymentIntentId) {
+        updatePaymentIntentShipping(paymentIntentId, {
+          name: shipping.name,
+          addressLine1: shipping.address1,
+          addressLine2: shipping.address2 || null,
+          city: shipping.city,
+          state: shipping.state || null,
+          postalCode: shipping.postal,
+          country: shipping.country,
+        }).catch((err) => console.error("Failed to update Stripe shipping for pendant:", err));
+      }
+
+      // Add to AWeber pendant list + update shipping address
+      if (originalSession.userEmail && isAweberEnabled()) {
+        addToCustomerList(originalSession.userEmail, "pendant", {
+          name: originalSession.userName || undefined,
+          stripePaymentId: paymentIntentId || undefined,
+        }).then(() => {
+          return updatePendantShippingAddress(originalSession.userEmail!, {
+            name: shipping.name,
+            addressLine1: shipping.address1,
+            addressLine2: shipping.address2 || null,
+            city: shipping.city,
+            state: shipping.state || null,
+            postalCode: shipping.postal,
+            country: shipping.country,
+          });
+        }).catch((err) => console.error("AWeber pendant shipping update failed:", err));
+      }
+
+      return res.json({ success: true });
+    } catch (error) {
+      console.error("Error saving pendant shipping:", error);
+      res.status(500).json({ error: "Failed to save pendant shipping" });
     }
   });
 

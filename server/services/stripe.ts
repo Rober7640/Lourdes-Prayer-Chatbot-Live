@@ -219,8 +219,9 @@ export async function createUpsellCheckoutSession(
       },
     };
 
-    // Medal and pendant require shipping address
-    if (config.upsellType === "medal" || config.upsellType === "pendant" || config.requiresShipping) {
+    // Only collect shipping at Stripe if explicitly requested
+    // New charge-first flow collects shipping separately after payment
+    if (config.requiresShipping) {
       checkoutConfig.shipping_address_collection = {
         allowed_countries: ["US", "CA", "GB", "AU", "NZ", "IE", "FR", "DE", "IT", "ES"],
       };

@@ -57,7 +57,7 @@ export default function PendantOfferCard({
             disabled={disabled}
             className="w-full h-11 rounded-xl bg-primary hover:bg-primary/90 text-primary-foreground font-medium"
           >
-            Yes, Add the Pendant to My Order for $49
+            Yes — Send Me the Pendant
           </Button>
 
           <button

@@ -59,7 +59,7 @@ export default function MedalOfferCard({
             disabled={disabled}
             className="w-full h-11 rounded-xl bg-primary hover:bg-primary/90 text-primary-foreground font-medium"
           >
-            Yes, Add the Medal to My Order for $79
+            Yes — Send Me the Medal
           </Button>
 
           <Button

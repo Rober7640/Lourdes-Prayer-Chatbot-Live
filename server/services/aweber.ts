@@ -503,6 +503,76 @@ export async function updateMedalShippingAddress(
   }
 }
 
+/**
+ * Update shipping address for a pendant upsell subscriber
+ * Called after shipping form is submitted
+ */
+export async function updatePendantShippingAddress(
+  email: string,
+  shipping: {
+    name: string;
+    addressLine1: string;
+    addressLine2?: string | null;
+    city: string;
+    state?: string | null;
+    postalCode: string;
+    country: string;
+  }
+): Promise<boolean> {
+  const config = getConfig();
+  if (!config) {
+    console.log("AWeber not configured - skipping pendant shipping address update");
+    return false;
+  }
+
+  try {
+    const listId = getListId("upsell_pendant");
+    if (!listId) {
+      console.error("Pendant upsell list ID not configured");
+      return false;
+    }
+
+    const searchResult = await aweberRequest(
+      `/accounts/${config.accountId}/lists/${listId}/subscribers?ws.op=find&email=${encodeURIComponent(email)}`
+    );
+
+    if (!searchResult.entries || searchResult.entries.length === 0) {
+      console.log(`Subscriber ${email} not found in upsell_pendant list`);
+      return false;
+    }
+
+    const subscriber = searchResult.entries[0];
+
+    const addressParts = [
+      shipping.name,
+      shipping.addressLine1,
+      shipping.addressLine2,
+      `${shipping.city}, ${shipping.state || ""} ${shipping.postalCode}`.trim(),
+      shipping.country,
+    ].filter(Boolean);
+    const shippingAddress = addressParts.join(", ");
+
+    const existingFields = subscriber.custom_fields || {};
+    const updatedFields = {
+      ...existingFields,
+      shipping_address: shippingAddress,
+    };
+
+    await aweberRequest(subscriber.self_link.replace(AWEBER_API_BASE, ""), {
+      method: "PATCH",
+      body: JSON.stringify({
+        custom_fields: updatedFields,
+      }),
+    });
+
+    console.log(`Updated shipping address for ${email} in upsell_pendant list`);
+    return true;
+  } catch (error) {
+    console.error(`Failed to update pendant shipping address:`, error);
+    return false;
+  }
+}
+
 // ============================================================================
 // EMAIL CAPTURE (LEAD) - DEPRECATED
 // ============================================================================

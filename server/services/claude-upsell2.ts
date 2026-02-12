@@ -250,22 +250,33 @@ function getAcceptPendantMessages(ctx: UpsellSessionContext): ScriptedMessage2 {
   const isForSelf = ctx.flags.prayingFor === "self";
   const shippingCollected = ctx.upsell2Flags.shippingAlreadyCollected;
 
-  const messages: string[] = [];
-
-  if (isForSelf) {
-    messages.push(`Thank you, ${userName}.`);
-    messages.push("The pendant will arrive within 7-14 days. Something to carry with you through this.");
-    messages.push("Michael will be watching over you.");
-  } else {
-    messages.push(`Thank you, ${userName}.`);
-    messages.push(`The pendant will arrive within 7-14 days. Something to place in ${personName}'s hands — a protector to carry with them.`);
-    messages.push(`Michael will be watching over ${personName}.`);
+  if (shippingCollected) {
+    // Shipping already collected from medal — payment will be charged on accept click
+    const messages: string[] = [];
+    if (isForSelf) {
+      messages.push(`Thank you, ${userName}.`);
+      messages.push("The pendant will arrive within 7-14 days. Something to carry with you through this.");
+      messages.push("Michael will be watching over you.");
+    } else {
+      messages.push(`Thank you, ${userName}.`);
+      messages.push(`The pendant will arrive within 7-14 days. Something to place in ${personName}'s hands — a protector to carry with them.`);
+      messages.push(`Michael will be watching over ${personName}.`);
+    }
+    return {
+      messages,
+      image: null,
+      uiHint: "show_thank_you_pendant",
+    };
   }
 
+  // Shipping NOT yet collected — show shipping form after charge
   return {
-    messages,
+    messages: [
+      `Almost there, ${userName}! Just need your shipping address for the pendant.`,
+      "Make sure your address is correct — it arrives in 7-14 days.",
+    ],
     image: null,
-    uiHint: shippingCollected ? "show_thank_you_pendant" : "show_pendant_shipping_form",
+    uiHint: "show_pendant_shipping_form",
   };
 }
 

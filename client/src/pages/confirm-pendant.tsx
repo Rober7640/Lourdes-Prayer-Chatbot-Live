@@ -142,6 +142,7 @@ export default function ConfirmPendantPage() {
   // Refs
   const isMountedRef = useRef(true);
   const scrollRef = useRef<HTMLDivElement | null>(null);
+  const paymentIntentIdRef = useRef<string | null>(null);
 
   // Cleanup on unmount
   useEffect(() => {
@@ -309,10 +310,24 @@ export default function ConfirmPendantPage() {
         // Determine upsell 1 outcome from URL or session
         const urlParams = new URLSearchParams(window.location.search);
         const outcome = (urlParams.get("outcome") || "declined") as Upsell1Outcome;
+        const isReturningFromPendantCheckout = urlParams.get("upsell") === "pendant";
 
         // Clean query params from URL
         if (window.location.search) {
           window.history.replaceState({}, "", `/confirm-pendant/${sessionId}`);
+        }
+
+        // If returning from Stripe checkout for pendant, show shipping form directly
+        if (isReturningFromPendantCheckout) {
+          setUpsellSessionId(sessionData.upsellSessionId);
+          setIsLoading(false);
+          await renderMessages(
+            ["Your payment was successful! Now just need your shipping address for the pendant."],
+            null,
+            "show_pendant_shipping_form",
+            undefined
+          );
+          return;
         }
 
         // Start upsell 2
@@ -399,6 +414,75 @@ export default function ConfirmPendantPage() {
 
     try {
       setShowThinkingDots(true);
+
+      // For accept_pendant: charge payment FIRST
+      if (action === "accept_pendant") {
+        // 1. Charge payment immediately
+        const chargeRes = await fetch("/api/upsell2/pendant-charge", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ upsellSessionId }),
+        });
+
+        if (!chargeRes.ok) {
+          throw new Error("Failed to charge pendant");
+        }
+
+        const chargeData = await chargeRes.json();
+
+        // If charge failed with checkout fallback, redirect to Stripe
+        if (chargeData.requiresCheckout && chargeData.checkoutUrl) {
+          window.location.href = chargeData.checkoutUrl;
+          return;
+        }
+
+        // Charge succeeded — store paymentIntentId
+        paymentIntentIdRef.current = chargeData.paymentIntentId || null;
+
+        // If shipping already collected (from medal), redirect to thank-you
+        if (chargeData.shippingAlreadyCollected) {
+          // 2. Get acceptance messages for display
+          const actionRes = await fetch("/api/upsell2/action", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ upsellSessionId, action }),
+          });
+
+          if (actionRes.ok) {
+            const data = await actionRes.json();
+            setPhase(data.phase);
+            setShowThinkingDots(false);
+            await renderMessages(data.messages, data.image, "none", data.imageAfterMessage);
+          } else {
+            setShowThinkingDots(false);
+          }
+
+          await sleep(2000);
+          window.location.href = `/thank-you/${sessionId}`;
+          return;
+        }
+
+        // Shipping NOT yet collected — get messages and show shipping form
+        const actionRes = await fetch("/api/upsell2/action", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ upsellSessionId, action }),
+        });
+
+        if (!actionRes.ok) {
+          throw new Error("Failed to process pendant action");
+        }
+
+        const data = await actionRes.json();
+        setPhase(data.phase);
+        setShowThinkingDots(false);
+
+        // Render acceptance messages (2 messages + shipping form)
+        await renderMessages(data.messages, data.image, data.uiHint, data.imageAfterMessage);
+        return;
+      }
+
+      // For decline_pendant
       const res = await fetch("/api/upsell2/action", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -414,21 +498,9 @@ export default function ConfirmPendantPage() {
       setShowThinkingDots(false);
 
       // For decline_pendant, render closing messages then redirect to thank-you page
-      if (action === "decline_pendant") {
-        await renderMessages(data.messages, data.image, "none", data.imageAfterMessage);
-        await sleep(2000);
-        window.location.href = `/thank-you/${sessionId}`;
-        return;
-      }
-
-      // For accept_pendant with shipping already collected, process payment immediately
-      if (action === "accept_pendant" && data.uiHint === "show_thank_you_pendant") {
-        await renderMessages(data.messages, data.image, "none", data.imageAfterMessage);
-        await processPendantPayment();
-        return;
-      }
-
-      await renderMessages(data.messages, data.image, data.uiHint, data.imageAfterMessage);
+      await renderMessages(data.messages, data.image, "none", data.imageAfterMessage);
+      await sleep(2000);
+      window.location.href = `/thank-you/${sessionId}`;
     } catch (err) {
       console.error("Pendant action error:", err);
       setShowThinkingDots(false);
@@ -441,56 +513,39 @@ export default function ConfirmPendantPage() {
     }
   }
 
-  // Process pendant payment (one-click or checkout fallback)
-  async function processPendantPayment(shipping?: ShippingData) {
-    if (!upsellSessionId) return;
+  // Handle pendant shipping form submission — address-only save, payment already charged
+  async function handlePendantShippingSubmit(shipping: ShippingData) {
+    if (!upsellSessionId || isTyping) return;
 
     try {
-      setShowThinkingDots(true);
-      const res = await fetch("/api/upsell2/pendant", {
+      const res = await fetch("/api/upsell2/pendant-shipping", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           upsellSessionId,
-          ...(shipping ? { shipping } : {}),
+          shipping,
+          paymentIntentId: paymentIntentIdRef.current,
         }),
       });
 
       if (!res.ok) {
-        throw new Error("Failed to process pendant payment");
+        throw new Error("Failed to save pendant shipping address");
       }
 
-      const data = await res.json();
-      setShowThinkingDots(false);
-
-      // If one-click failed and checkout is required, redirect to Stripe
-      if (data.requiresCheckout && data.checkoutUrl) {
-        window.location.href = data.checkoutUrl;
-        return;
-      }
-
-      // One-click success — remove pendant shipping form and redirect to thank-you page
+      // Remove shipping form and redirect to thank-you page
       setItems((prev) => prev.filter((i) => i.kind !== "pendant_shipping_form"));
 
-      // Redirect to consolidated thank-you page
       await sleep(1000);
       window.location.href = `/thank-you/${sessionId}`;
     } catch (err) {
-      console.error("Pendant payment error:", err);
-      setShowThinkingDots(false);
+      console.error("Pendant shipping submit error:", err);
       await renderMessages(
-        ["I apologize — there was a problem processing your order. Please try again."],
+        ["I apologize — there was a problem saving your address. Please try again."],
         null,
-        "none",
+        "show_pendant_shipping_form",
         undefined
       );
     }
-  }
-
-  // Handle pendant shipping form submission
-  async function handlePendantShippingSubmit(shipping: ShippingData) {
-    if (!upsellSessionId || isTyping) return;
-    await processPendantPayment(shipping);
   }
 
   // ========================================================================
@@ -593,7 +648,6 @@ export default function ConfirmPendantPage() {
                     <ShippingForm
                       onSubmit={handlePendantShippingSubmit}
                       disabled={isTyping}
-                      price="$49"
                     />
                   </div>
                 );

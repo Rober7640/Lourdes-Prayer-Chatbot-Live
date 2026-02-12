@@ -168,6 +168,7 @@ export default function ConfirmationPage() {
   // Refs
   const isMountedRef = useRef(true);
   const scrollRef = useRef<HTMLDivElement | null>(null);
+  const paymentIntentIdRef = useRef<string | null>(null);
 
   // Cleanup on unmount
   useEffect(() => {
@@ -354,6 +355,10 @@ export default function ConfirmationPage() {
           }
         }
 
+        // Check if returning from Stripe checkout for medal
+        const upsellParam = urlParams.get("upsell");
+        const isReturningFromMedalCheckout = upsellParam === "medal";
+
         // Clean query params from URL (checkout_session, upsell, etc.)
         if (window.location.search) {
           window.history.replaceState({}, "", `/confirmation/${sessionId}`);
@@ -376,8 +381,19 @@ export default function ConfirmationPage() {
         setFlags(data.flags);
         setIsLoading(false);
 
-        // Render initial messages
-        await renderMessages(data.messages, data.image, data.uiHint, data.imageAfterMessage);
+        // If returning from Stripe checkout for medal, show shipping form directly
+        if (isReturningFromMedalCheckout) {
+          // Medal already paid via Stripe checkout — just need shipping address
+          await renderMessages(
+            ["Your payment was successful! Now just need your shipping address so we can send the medal."],
+            null,
+            "show_shipping_form",
+            undefined
+          );
+        } else {
+          // Render initial messages
+          await renderMessages(data.messages, data.image, data.uiHint, data.imageAfterMessage);
+        }
       } catch (err) {
         console.error("Failed to load confirmation:", err);
         setError("Unable to load this page. Please try again.");
@@ -401,6 +417,52 @@ export default function ConfirmationPage() {
 
     try {
       setShowThinkingDots(true);
+
+      // For accept_medal: charge payment FIRST, then get messages
+      if (action === "accept_medal") {
+        // 1. Call charge endpoint immediately
+        const chargeRes = await fetch("/api/upsell/medal-charge", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ upsellSessionId }),
+        });
+
+        if (!chargeRes.ok) {
+          throw new Error("Failed to charge medal");
+        }
+
+        const chargeData = await chargeRes.json();
+
+        // If charge failed with checkout fallback, redirect to Stripe
+        if (chargeData.requiresCheckout && chargeData.checkoutUrl) {
+          window.location.href = chargeData.checkoutUrl;
+          return;
+        }
+
+        // Charge succeeded — store paymentIntentId
+        paymentIntentIdRef.current = chargeData.paymentIntentId || null;
+
+        // 2. Now get acceptance messages from the action endpoint
+        const actionRes = await fetch("/api/upsell/action", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ upsellSessionId, action }),
+        });
+
+        if (!actionRes.ok) {
+          throw new Error("Failed to process action");
+        }
+
+        const data = await actionRes.json();
+        setPhase(data.phase);
+        setFlags(data.flags);
+        setShowThinkingDots(false);
+
+        // Render acceptance messages (2 messages + shipping form)
+        await renderMessages(data.messages, data.image, data.uiHint, data.imageAfterMessage);
+        return;
+      }
+
       const res = await fetch("/api/upsell/action", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -532,39 +594,34 @@ export default function ConfirmationPage() {
     }
   }
 
-  // Handle shipping form submission (medal)
+  // Handle shipping form submission (medal) — address-only save, payment already charged
   async function handleShippingSubmit(shipping: ShippingData) {
     if (!upsellSessionId || isTyping) return;
 
     try {
-      const res = await fetch("/api/upsell/medal", {
+      const res = await fetch("/api/upsell/medal-shipping", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ upsellSessionId, shipping }),
+        body: JSON.stringify({
+          upsellSessionId,
+          shipping,
+          paymentIntentId: paymentIntentIdRef.current,
+        }),
       });
 
       if (!res.ok) {
-        throw new Error("Failed to process order");
+        throw new Error("Failed to save shipping address");
       }
 
-      const data = await res.json();
-
-      // If one-click failed and checkout is required, redirect to Stripe
-      if (data.requiresCheckout && data.checkoutUrl) {
-        window.location.href = data.checkoutUrl;
-        return;
-      }
-
-      // One-click success — remove shipping form and redirect to pendant page
+      // Remove shipping form and redirect to pendant page
       setItems((prev) => prev.filter((i) => i.kind !== "shipping_form"));
 
-      // Redirect to pendant page (Upsell 2) after medal purchase
       await sleep(1000);
       window.location.href = `/confirm-pendant/${sessionId}?outcome=medal`;
     } catch (err) {
       console.error("Shipping submit error:", err);
       await renderMessages(
-        ["I apologize — there was a problem processing your order. Please try again."],
+        ["I apologize — there was a problem saving your address. Please try again."],
         null,
         "show_shipping_form",
         undefined

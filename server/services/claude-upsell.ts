@@ -275,28 +275,11 @@ function getTheAskMessages(ctx: UpsellSessionContext): ScriptedMessage {
 
 function getAcceptanceMessages(ctx: UpsellSessionContext): ScriptedMessage {
   const userName = ctx.userName || "friend";
-  const personName = ctx.personName || "your loved one";
-  const isForSelf = ctx.flags.prayingFor === "self";
-
-  if (isForSelf) {
-    return {
-      messages: [
-        `Thank you, ${userName}.`,
-        "The medal will ship directly from France and arrive within 7-10 days.",
-        "Something to carry with you — with water from the Grotto inside.",
-        "God bless you. I'll be praying for you too.",
-      ],
-      image: null,
-      uiHint: "show_shipping_form",
-    };
-  }
 
   return {
     messages: [
-      `Thank you, ${userName}.`,
-      "The medal will ship directly from France and arrive within 7-10 days.",
-      `Something to place in ${personName}'s hands — with water from the Grotto inside.`,
-      `God bless you. I'll be praying for ${personName} too.`,
+      `Almost there, ${userName}! Just need your shipping address so we can send the medal directly from France.`,
+      "Make sure your address is correct — it ships internationally and arrives in 7-10 days.",
     ],
     image: null,
     uiHint: "show_shipping_form",

@@ -38,7 +38,7 @@ export function calculatePauseBetweenMessages(previousMessage?: string): number 
   // Add extra time for longer messages so user can read them
   if (previousMessage) {
     const wordCount = previousMessage.split(' ').length;
-    pause += wordCount * 80; // +80ms per word (~5 words/sec reading pace)
+    pause += wordCount * 120; // +120ms per word (~5 words/sec reading pace)
   }
 
   return pause;
