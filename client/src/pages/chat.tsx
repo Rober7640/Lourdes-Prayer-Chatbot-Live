@@ -175,6 +175,7 @@ export default function ChatPage() {
   // Ref to track if component is mounted (for async operations)
   const isMountedRef = useRef(true);
   const scrollRef = useRef<HTMLDivElement | null>(null);
+  const inputRef = useRef<HTMLInputElement | null>(null);
   const paymentIdleTimerRef = useRef<NodeJS.Timeout | null>(null);
 
   // Cleanup on unmount
@@ -285,6 +286,13 @@ export default function ChatPage() {
 
     return () => observer.disconnect();
   }, []);
+
+  // Auto-focus input after bot finishes typing
+  useEffect(() => {
+    if (!isTyping && !isSending && !isLoading) {
+      inputRef.current?.focus();
+    }
+  }, [isTyping, isSending, isLoading]);
 
   // ========================================================================
   // TYPING ANIMATION
@@ -1213,7 +1221,7 @@ export default function ChatPage() {
                           disabled={isProcessingPayment}
                           className="flex-1 rounded-lg bg-primary hover:bg-primary/90 text-primary-foreground py-2.5 px-4 text-sm font-medium transition disabled:opacity-50"
                         >
-                          {isProcessingPayment ? "Processing..." : "Yes, Send Me a Medal"}
+                          {isProcessingPayment ? "Processing..." : "Yes, Add the Medal to My Order for $79"}
                         </button>
                         <button
                           onClick={() => handleUpsellDecline("medal")}
@@ -1399,6 +1407,7 @@ export default function ChatPage() {
         <div className="fixed bottom-0 left-0 right-0 border-t border-card-border bg-background/80 backdrop-blur">
           <div className="mx-auto flex w-full max-w-2xl items-center gap-2 px-4 py-3">
             <Input
+              ref={inputRef}
               value={composer}
               onChange={(e) => setComposer(e.target.value)}
               placeholder="Type a message…"
