@@ -1035,7 +1035,15 @@ The user has chosen the simple/first prayer version.
 - Ask: "Is this the prayer you'd like me to carry to Lourdes?"
 - Wait for their final confirmation before proceeding to Step 6`,
 
-    choose_detailed: `**USER INTENT: CHOOSE DETAILED PRAYER**
+    choose_detailed: subPhase === "simple_offered"
+      ? `**USER INTENT: WANTS TO SEE DETAILED PRAYER**
+The user wants to see a more detailed version. The detailed prayer has NOT been composed yet.
+- Follow Step 4b: Compose a more elaborate prayer (70-100 words, under 600 characters) with more specific details, additional petitions, and richer imagery
+- Present it: "Here's a more detailed prayer:" followed by the COMPLETE prayer in ONE message
+- Then ask: "Does this feel right, or would you like me to adjust it?"
+- Do NOT set ready_for_payment — wait for their final confirmation first
+- Do NOT set ui_hint to "show_petition_photo" yet`
+      : `**USER INTENT: CHOOSE DETAILED PRAYER**
 The user has chosen the detailed/second prayer version.
 - Confirm their choice: "The detailed prayer it is."
 - Read back the detailed prayer to confirm
