@@ -2287,6 +2287,146 @@ export async function registerRoutes(
   });
 
   // ========================================================================
+  // THANK YOU PAGE
+  // ========================================================================
+
+  /**
+   * GET /api/thank-you/:sessionId
+   * Return consolidated order summary for the thank-you page
+   */
+  app.get("/api/thank-you/:sessionId", async (req, res) => {
+    try {
+      const { sessionId } = req.params;
+      const DB_ENABLED = !!process.env.DATABASE_URL;
+
+      // Try in-memory session first
+      const originalSession = getSession(sessionId);
+      const upsellSession = getUpsellSessionByOriginalId(sessionId);
+
+      // If in-memory session is gone (e.g. after server restart), fall back to database
+      let dbSession: Awaited<ReturnType<typeof dbStorage.getSession>> | undefined;
+      let dbPrayer: Awaited<ReturnType<typeof dbStorage.getPrayerBySession>> | undefined;
+
+      if (!originalSession && DB_ENABLED) {
+        try {
+          dbSession = await dbStorage.getSession(sessionId);
+          dbPrayer = await dbStorage.getPrayerBySession(sessionId);
+        } catch (err) {
+          console.error("Failed to fetch session from DB:", err);
+        }
+      }
+
+      // If neither in-memory nor DB has the session, return 404
+      if (!originalSession && !dbSession) {
+        return res.status(404).json({ error: "Session not found" });
+      }
+
+      // Resolve user info from all available sources
+      const userName = originalSession?.userName || upsellSession?.userName || dbSession?.userName || null;
+      const userEmail = originalSession?.userEmail || upsellSession?.userEmail || dbSession?.userEmail || null;
+      const personName = upsellSession?.personName || originalSession?.personName || dbPrayer?.personName || "your loved one";
+      const prayingFor = upsellSession?.flags.prayingFor || "other";
+      const situation = upsellSession?.situation || originalSession?.situationDetail || dbPrayer?.situation || null;
+
+      // Build purchased items list
+      const items: Array<{ label: string; price: number; type: string }> = [];
+      const tierLabels: Record<string, string> = {
+        hardship: "Prayer Delivery — I Need a Little Help",
+        full: "Prayer Delivery — Cover My Prayer",
+        generous: "Prayer Delivery — Carry & Lift Another",
+      };
+
+      if (DB_ENABLED) {
+        try {
+          const dbPayments = await dbStorage.getSessionPayments(sessionId);
+          // Find prayer payment (tier is hardship/full/generous)
+          const prayerPayment = dbPayments.find((p) =>
+            ["hardship", "full", "generous"].includes(p.tier) && p.status === "completed"
+          );
+          const prayerTier = prayerPayment?.tier || "full";
+          const prayerAmount = prayerPayment ? prayerPayment.amountCents / 100 : 35;
+
+          items.push({
+            label: tierLabels[prayerTier] || "Prayer Delivery",
+            price: prayerAmount,
+            type: "prayer",
+          });
+
+          // Find upsell payments
+          const upsellPayments = dbPayments.filter((p) =>
+            ["medal", "candle", "pendant"].includes(p.tier) && p.status === "completed"
+          );
+          const upsellLabels: Record<string, string> = {
+            medal: "The Lourdes Healing Medal",
+            candle: "Grotto Prayer Candle",
+            pendant: "Archangel Michael Pendant",
+          };
+          for (const up of upsellPayments) {
+            items.push({
+              label: upsellLabels[up.tier] || up.tier,
+              price: up.amountCents / 100,
+              type: up.tier,
+            });
+          }
+        } catch (err) {
+          console.error("Failed to fetch payments from DB:", err);
+          // Fallback: just show prayer
+          items.push({ label: "Prayer Delivery", price: 35, type: "prayer" });
+        }
+      } else {
+        // No DB — use in-memory upsell session data as fallback
+        items.push({
+          label: tierLabels.full,
+          price: 35,
+          type: "prayer",
+        });
+        if (upsellSession) {
+          const upsellLabels: Record<string, string> = {
+            medal: "The Lourdes Healing Medal",
+            candle: "Grotto Prayer Candle",
+            pendant: "Archangel Michael Pendant",
+          };
+          const upsellAmounts: Record<string, number> = { medal: 79, candle: 19, pendant: 49 };
+          if (upsellSession.purchaseType && upsellSession.purchaseType !== "prayer") {
+            items.push({
+              label: upsellLabels[upsellSession.purchaseType] || upsellSession.purchaseType,
+              price: upsellAmounts[upsellSession.purchaseType] || 0,
+              type: upsellSession.purchaseType,
+            });
+          }
+          if (upsellSession.upsell2PurchaseType && upsellSession.upsell2PurchaseType !== "prayer") {
+            items.push({
+              label: upsellLabels[upsellSession.upsell2PurchaseType] || upsellSession.upsell2PurchaseType,
+              price: upsellAmounts[upsellSession.upsell2PurchaseType] || 0,
+              type: upsellSession.upsell2PurchaseType,
+            });
+          }
+        }
+      }
+
+      // If no items were added at all, add default prayer
+      if (items.length === 0) {
+        items.push({ label: "Prayer Delivery", price: 35, type: "prayer" });
+      }
+
+      const total = items.reduce((sum, item) => sum + item.price, 0);
+
+      res.json({
+        userName,
+        userEmail,
+        personName,
+        prayingFor,
+        situation,
+        items,
+        total,
+      });
+    } catch (error) {
+      console.error("Error loading thank-you page:", error);
+      res.status(500).json({ error: "Failed to load order summary" });
+    }
+  });
+
+  // ========================================================================
   // STRIPE WEBHOOK
   // ========================================================================
 
