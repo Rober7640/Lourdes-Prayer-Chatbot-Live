@@ -999,7 +999,7 @@ export default function ChatPage() {
 
   return (
     <div className="min-h-screen bg-background">
-      <div className="mx-auto flex min-h-screen w-full max-w-2xl flex-col">
+      <div className="mx-auto flex h-screen w-full max-w-2xl flex-col overflow-hidden">
         {/* Header */}
         <header className="sticky top-0 z-10 border-b border-card-border bg-background/70 px-4 py-3 backdrop-blur">
           <div className="flex items-center justify-between">
