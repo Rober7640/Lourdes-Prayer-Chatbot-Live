@@ -151,13 +151,29 @@ export default function ConfirmPendantPage() {
     };
   }, []);
 
-  // Auto-scroll when items change
+  // Auto-scroll when any content changes in the chat
   useEffect(() => {
-    scrollRef.current?.scrollTo({
-      top: scrollRef.current.scrollHeight,
-      behavior: "smooth",
-    });
-  }, [items, showThinkingDots]);
+    const container = scrollRef.current;
+    if (!container) return;
+
+    const scrollToBottom = () => {
+      setTimeout(() => {
+        container.scrollTo({
+          top: container.scrollHeight,
+          behavior: "smooth",
+        });
+      }, 50);
+    };
+
+    // Scroll on initial mount
+    scrollToBottom();
+
+    // Watch for any DOM changes (new messages, typing dots, cards, etc.)
+    const observer = new MutationObserver(scrollToBottom);
+    observer.observe(container, { childList: true, subtree: true });
+
+    return () => observer.disconnect();
+  }, []);
 
   // ========================================================================
   // TYPING ANIMATION
@@ -494,7 +510,7 @@ export default function ConfirmPendantPage() {
 
   return (
     <div className="min-h-screen bg-background">
-      <div className="mx-auto flex min-h-screen w-full max-w-2xl flex-col">
+      <div className="mx-auto flex h-screen w-full max-w-2xl flex-col overflow-hidden">
         {/* Header */}
         <header className="sticky top-0 z-10 border-b border-card-border bg-background/70 px-4 py-3 backdrop-blur">
           <div className="flex items-center justify-between">
