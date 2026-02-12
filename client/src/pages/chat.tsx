@@ -209,21 +209,30 @@ export default function ChatPage() {
     // Save session
     saveSessionToStorage();
 
-    // Show soft close messages
+    // Show soft close messages with proper animation
     const name = personName || "your loved one";
+    setShowThinkingDots(true);
+    await sleep(calculateThinkingDelay());
+    if (!isMountedRef.current) return;
+    setShowThinkingDots(false);
+
     setItems((prev) => [
       ...prev,
       { id: uid("sm"), role: "sm", kind: "text", text: "I understand if now isn't the right time." },
     ]);
-    await sleep(1500);
+    setShowThinkingDots(true);
+    await sleep(calculatePauseBetweenMessages());
     if (!isMountedRef.current) return;
+    setShowThinkingDots(false);
 
     setItems((prev) => [
       ...prev,
       { id: uid("sm"), role: "sm", kind: "text", text: `Your prayer for ${name} is saved. You can return anytime, or check your email.` },
     ]);
-    await sleep(1500);
+    setShowThinkingDots(true);
+    await sleep(calculatePauseBetweenMessages());
     if (!isMountedRef.current) return;
+    setShowThinkingDots(false);
 
     setItems((prev) => [
       ...prev,
@@ -255,9 +264,11 @@ export default function ChatPage() {
 
   // Auto-scroll when items change
   useEffect(() => {
-    scrollRef.current?.scrollTo({
-      top: scrollRef.current.scrollHeight,
-      behavior: "smooth",
+    requestAnimationFrame(() => {
+      scrollRef.current?.scrollTo({
+        top: scrollRef.current.scrollHeight,
+        behavior: "smooth",
+      });
     });
   }, [items, showThinkingDots]);
 
@@ -310,8 +321,10 @@ export default function ChatPage() {
 
       // Handle UI hints
       if (uiHint && uiHint !== "none") {
+        setShowThinkingDots(true);
         await sleep(calculatePauseBetweenMessages());
         if (!isMountedRef.current) return;
+        setShowThinkingDots(false);
 
         if (uiHint === "show_buckets") {
           setItems((prev) => [
@@ -336,33 +349,47 @@ export default function ChatPage() {
               caption: "The petition box at the Grotto of Lourdes"
             },
           ]);
+          setShowThinkingDots(true);
           await sleep(calculatePauseBetweenMessages());
           if (!isMountedRef.current) return;
+          setShowThinkingDots(false);
 
           // Continue with remaining explanation
           await typeMessage("You'll receive photos of your prayer at the holy site, sent directly to your email after our visit.");
+          setShowThinkingDots(true);
           await sleep(calculatePauseBetweenMessages());
           if (!isMountedRef.current) return;
+          setShowThinkingDots(false);
 
           await typeMessage("Our team lovingly hand-delivers each prayer to the Grotto. We only ask for a small amount to help cover the time, care, and materials involved.");
+          setShowThinkingDots(true);
           await sleep(calculatePauseBetweenMessages());
           if (!isMountedRef.current) return;
+          setShowThinkingDots(false);
 
           await typeMessage("The full cost to provide this sacred service is $35 per prayer.");
+          setShowThinkingDots(true);
           await sleep(calculatePauseBetweenMessages());
           if (!isMountedRef.current) return;
+          setShowThinkingDots(false);
 
           await typeMessage("If you're facing financial hardship, you're still welcome to participate — choose the amount that's right for you.");
+          setShowThinkingDots(true);
           await sleep(calculatePauseBetweenMessages());
           if (!isMountedRef.current) return;
+          setShowThinkingDots(false);
 
           await typeMessage("If you're able, consider giving more to help cover the cost for others who cannot.");
+          setShowThinkingDots(true);
           await sleep(calculatePauseBetweenMessages());
           if (!isMountedRef.current) return;
+          setShowThinkingDots(false);
 
           await typeMessage("Every amount helps us bring more prayers to Lourdes — as one Body in Christ.");
+          setShowThinkingDots(true);
           await sleep(calculatePauseBetweenMessages());
           if (!isMountedRef.current) return;
+          setShowThinkingDots(false);
 
           // Show payment card
           setItems((prev) => [
@@ -699,7 +726,10 @@ export default function ChatPage() {
             "Thank you! Your blessed medal is being prepared.",
             "Please provide your shipping address so we can send it to you.",
           ]);
-          await sleep(500);
+          setShowThinkingDots(true);
+          await sleep(calculatePauseBetweenMessages());
+          if (!isMountedRef.current) return;
+          setShowThinkingDots(false);
           setItems((prev) => [
             ...prev,
             { id: uid("sm"), role: "sm", kind: "shipping_form" },
@@ -761,13 +791,15 @@ export default function ChatPage() {
 
       // Show candle upsell or thank you
       if (!upsellCandleShown) {
-        await sleep(500);
         await renderMessages([
           "Your shipping address has been saved.",
           "Before you go, may I share one more thought?",
           "Many pilgrims also light a candle at the Grotto. It burns for days, a continuous prayer.",
         ]);
-        await sleep(500);
+        setShowThinkingDots(true);
+        await sleep(calculatePauseBetweenMessages());
+        if (!isMountedRef.current) return;
+        setShowThinkingDots(false);
         setItems((prev) => [
           ...prev,
           { id: uid("sm"), role: "sm", kind: "upsell_candle" },
@@ -795,12 +827,14 @@ export default function ChatPage() {
       setUpsellMedalShown(true);
 
       // Show candle upsell
-      await sleep(500);
       await renderMessages([
         "I understand. Before you go, may I share one more thought?",
         "Many pilgrims also light a candle at the Grotto. It burns for days, a continuous prayer.",
       ]);
-      await sleep(500);
+      setShowThinkingDots(true);
+      await sleep(calculatePauseBetweenMessages());
+      if (!isMountedRef.current) return;
+      setShowThinkingDots(false);
       setItems((prev) => [
         ...prev,
         { id: uid("sm"), role: "sm", kind: "upsell_candle" },
@@ -822,6 +856,10 @@ export default function ChatPage() {
       "You'll receive a confirmation email shortly, and photos when the prayer is delivered.",
       "May Our Lady's blessing be upon you.",
     ]);
+    setShowThinkingDots(true);
+    await sleep(calculatePauseBetweenMessages());
+    if (!isMountedRef.current) return;
+    setShowThinkingDots(false);
     setItems((prev) => [
       ...prev,
       { id: uid("sm"), role: "sm", kind: "thank_you" },
