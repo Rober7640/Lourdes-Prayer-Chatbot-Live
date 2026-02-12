@@ -7,6 +7,7 @@ import LanderPage from "@/pages/lander";
 import ChatPage from "@/pages/chat";
 import ConfirmationPage from "@/pages/confirmation";
 import ConfirmPendantPage from "@/pages/confirm-pendant";
+import ThankYouPage from "@/pages/thank-you";
 import NotFound from "@/pages/not-found";
 
 function Router() {
@@ -16,6 +17,7 @@ function Router() {
       <Route path="/chat" component={ChatPage} />
       <Route path="/confirmation/:sessionId" component={ConfirmationPage} />
       <Route path="/confirm-pendant/:sessionId" component={ConfirmPendantPage} />
+      <Route path="/thank-you/:sessionId" component={ThankYouPage} />
       {/* Fallback to 404 */}
       <Route component={NotFound} />
     </Switch>

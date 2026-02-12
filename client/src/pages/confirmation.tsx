@@ -422,9 +422,11 @@ export default function ConfirmationPage() {
         return;
       }
 
-      // For "go" (early exit), show prayer thank-you and skip Upsell 2
+      // For "go" (early exit), render closing messages then redirect to thank-you page
       if (action === "go") {
-        await renderMessages(data.messages, data.image, data.uiHint, data.imageAfterMessage);
+        await renderMessages(data.messages, data.image, "none", data.imageAfterMessage);
+        await sleep(2000);
+        window.location.href = `/thank-you/${sessionId}`;
         return;
       }
 
@@ -479,16 +481,8 @@ export default function ConfirmationPage() {
         return;
       }
 
-      // One-click success — show thank you card, then redirect to pendant page
-      if (data.uiHint === "show_thank_you_candle") {
-        setItems((prev) => [
-          ...prev,
-          { id: uid("sm"), role: "sm", kind: "thank_you", variant: "candle" as ThankYouVariant },
-        ]);
-      }
-
       // Redirect to pendant page (Upsell 2) after candle purchase
-      await sleep(2000);
+      await sleep(1000);
       window.location.href = `/confirm-pendant/${sessionId}?outcome=candle`;
     } catch (err) {
       console.error("Candle payment error:", err);
@@ -561,18 +555,11 @@ export default function ConfirmationPage() {
         return;
       }
 
-      // One-click success — remove shipping form and show thank you card
+      // One-click success — remove shipping form and redirect to pendant page
       setItems((prev) => prev.filter((i) => i.kind !== "shipping_form"));
 
-      if (data.uiHint === "show_thank_you_medal") {
-        setItems((prev) => [
-          ...prev,
-          { id: uid("sm"), role: "sm", kind: "thank_you", variant: "medal" as ThankYouVariant },
-        ]);
-      }
-
       // Redirect to pendant page (Upsell 2) after medal purchase
-      await sleep(2000);
+      await sleep(1000);
       window.location.href = `/confirm-pendant/${sessionId}?outcome=medal`;
     } catch (err) {
       console.error("Shipping submit error:", err);

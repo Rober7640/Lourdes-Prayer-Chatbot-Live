@@ -413,6 +413,14 @@ export default function ConfirmPendantPage() {
       setPhase(data.phase);
       setShowThinkingDots(false);
 
+      // For decline_pendant, render closing messages then redirect to thank-you page
+      if (action === "decline_pendant") {
+        await renderMessages(data.messages, data.image, "none", data.imageAfterMessage);
+        await sleep(2000);
+        window.location.href = `/thank-you/${sessionId}`;
+        return;
+      }
+
       // For accept_pendant with shipping already collected, process payment immediately
       if (action === "accept_pendant" && data.uiHint === "show_thank_you_pendant") {
         await renderMessages(data.messages, data.image, "none", data.imageAfterMessage);
@@ -461,17 +469,12 @@ export default function ConfirmPendantPage() {
         return;
       }
 
-      // One-click success — remove pendant shipping form and show thank you
+      // One-click success — remove pendant shipping form and redirect to thank-you page
       setItems((prev) => prev.filter((i) => i.kind !== "pendant_shipping_form"));
 
-      if (data.uiHint === "show_thank_you_pendant") {
-        setItems((prev) => [
-          ...prev,
-          { id: uid("sm"), role: "sm", kind: "thank_you", variant: "pendant" as ThankYouVariant },
-        ]);
-      }
-
-      setPhase("complete_2");
+      // Redirect to consolidated thank-you page
+      await sleep(1000);
+      window.location.href = `/thank-you/${sessionId}`;
     } catch (err) {
       console.error("Pendant payment error:", err);
       setShowThinkingDots(false);
