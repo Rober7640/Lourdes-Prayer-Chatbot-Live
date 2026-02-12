@@ -175,7 +175,6 @@ export default function ChatPage() {
   // Ref to track if component is mounted (for async operations)
   const isMountedRef = useRef(true);
   const scrollRef = useRef<HTMLDivElement | null>(null);
-  const bottomRef = useRef<HTMLDivElement | null>(null);
   const paymentIdleTimerRef = useRef<NodeJS.Timeout | null>(null);
 
   // Cleanup on unmount
@@ -263,13 +262,29 @@ export default function ChatPage() {
     };
   }, [items, softClosed, handleSoftClose]);
 
-  // Auto-scroll when items change
+  // Auto-scroll when any content changes in the chat
   useEffect(() => {
-    const timer = setTimeout(() => {
-      bottomRef.current?.scrollIntoView({ behavior: "smooth", block: "end" });
-    }, 80);
-    return () => clearTimeout(timer);
-  }, [items, showThinkingDots]);
+    const container = scrollRef.current;
+    if (!container) return;
+
+    const scrollToBottom = () => {
+      setTimeout(() => {
+        container.scrollTo({
+          top: container.scrollHeight,
+          behavior: "smooth",
+        });
+      }, 50);
+    };
+
+    // Scroll on initial mount
+    scrollToBottom();
+
+    // Watch for any DOM changes (new messages, typing dots, cards, etc.)
+    const observer = new MutationObserver(scrollToBottom);
+    observer.observe(container, { childList: true, subtree: true });
+
+    return () => observer.disconnect();
+  }, []);
 
   // ========================================================================
   // TYPING ANIMATION
@@ -1378,9 +1393,6 @@ export default function ChatPage() {
               <TypingDots />
             </div>
           ) : null}
-
-          {/* Scroll anchor */}
-          <div ref={bottomRef} />
         </div>
 
         {/* Composer */}
