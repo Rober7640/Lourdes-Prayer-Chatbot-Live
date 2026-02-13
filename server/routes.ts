@@ -1169,7 +1169,7 @@ export async function registerRoutes(
               email: originalSession.userEmail || undefined,
               userName: originalSession.userName || undefined,
               ...fbData,
-              customData: { value: 79, currency: "USD", content_type: "product", content_ids: ["upsell_medal"] },
+              customData: { value: 59, currency: "USD", content_type: "product", content_ids: ["upsell_medal"] },
             }).catch((err) => console.error("Facebook CAPI Purchase (medal) failed:", err));
           }
 
@@ -1279,7 +1279,7 @@ export async function registerRoutes(
               email: originalSession.userEmail || undefined,
               userName: originalSession.userName || undefined,
               ...fbData,
-              customData: { value: 79, currency: "USD", content_type: "product", content_ids: ["upsell_medal"] },
+              customData: { value: 59, currency: "USD", content_type: "product", content_ids: ["upsell_medal"] },
             }).catch((err) => console.error("Facebook CAPI Purchase (medal-charge) failed:", err));
           }
 
@@ -2394,7 +2394,7 @@ export async function registerRoutes(
         // Facebook CAPI Purchase event for one-click upsell
         if (isFacebookEnabled() && result.paymentIntentId) {
           const fbData = extractFbRequestData(req);
-          const upsellAmounts: Record<string, number> = { medal: 79, candle: 19, pendant: 49 };
+          const upsellAmounts: Record<string, number> = { medal: 59, candle: 19, pendant: 49 };
           sendEvent({
             eventName: "Purchase",
             eventId: result.paymentIntentId,
@@ -2801,7 +2801,7 @@ export async function registerRoutes(
             candle: "Grotto Prayer Candle",
             pendant: "Archangel Michael Pendant",
           };
-          const upsellAmounts: Record<string, number> = { medal: 79, candle: 19, pendant: 49 };
+          const upsellAmounts: Record<string, number> = { medal: 59, candle: 19, pendant: 49 };
           if (upsellSession.purchaseType && upsellSession.purchaseType !== "prayer") {
             items.push({
               label: upsellLabels[upsellSession.purchaseType] || upsellSession.purchaseType,
@@ -2930,7 +2930,7 @@ export async function registerRoutes(
         const fbPurchaseType = result.type === "medal" ? "medal" :
                                result.type === "candle" ? "candle" :
                                result.type === "pendant" ? "pendant" : "prayer";
-        const webhookAmountMap: Record<string, number> = { prayer: 35, medal: 79, candle: 19, pendant: 49 };
+        const webhookAmountMap: Record<string, number> = { prayer: 35, medal: 59, candle: 19, pendant: 49 };
         let fbAmount = webhookAmountMap[fbPurchaseType] || 35;
         if (fbPurchaseType === "prayer" && result.tier) {
           const tierAmounts: Record<string, number> = { hardship: 28, full: 35, generous: 55 };

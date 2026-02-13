@@ -361,7 +361,7 @@ test.describe("UI Components", () => {
     await expect(goButton).not.toBeVisible({ timeout: 5000 });
   });
 
-  test("14. Medal offer card shows $79 and all buttons", async ({ page, request }) => {
+  test("14. Medal offer card shows $59 and all buttons", async ({ page, request }) => {
     const { url } = await createTestSession(request);
     await page.goto(url);
     await waitForTypingComplete(page);
@@ -373,7 +373,7 @@ test.describe("UI Components", () => {
     await expect(acceptButton).toBeVisible({ timeout: 180000 });
 
     // Check for price
-    const priceText = page.getByText("$79");
+    const priceText = page.getByText("$59");
     await expect(priceText).toBeVisible();
 
     // Check for all three buttons

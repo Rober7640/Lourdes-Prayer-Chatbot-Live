@@ -15,7 +15,7 @@ These emails are sent to users who completed payment. Three separate AWeber list
 | List | Trigger | Emails |
 |------|---------|--------|
 | Prayer Only | Payment complete, no upsell | 4 emails |
-| Prayer + Medal | Medal purchased ($79) | 5 emails |
+| Prayer + Medal | Medal purchased ($59) | 5 emails |
 | Prayer + Candle | Candle purchased ($19) | 4 emails |
 
 ---
@@ -179,7 +179,7 @@ Messengers of Lourdes
 
 ## List 2: Prayer + Medal
 
-Users who purchased the Lourdes Healing Medal ($79).
+Users who purchased the Lourdes Healing Medal ($59).
 
 ---
 

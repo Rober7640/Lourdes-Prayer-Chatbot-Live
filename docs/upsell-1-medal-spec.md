@@ -2,7 +2,7 @@
 
 ## Overview
 
-Post-payment upsell flow offering the Lourdes Healing Medal ($79) with a candle downsell ($19). The flow is scripted with phase-based messages, personalized for "self" vs "other" prayer contexts.
+Post-payment upsell flow offering the Lourdes Healing Medal ($59) with a candle downsell ($19). The flow is scripted with phase-based messages, personalized for "self" vs "other" prayer contexts.
 
 ---
 
@@ -17,7 +17,7 @@ Post-payment upsell flow offering the Lourdes Healing Medal ($79) with a candle 
 2. Tell them Bernadette's story — who she was, what she witnessed
 3. Reveal the water capsule — the same water from the spring
 4. Help them see how to give it (or keep it, if praying for self)
-5. Make the offer — $79
+5. Make the offer — $59
 
 **You are not selling a product. You are offering something sacred to carry — or to place in their loved one's hands.**
 
@@ -47,7 +47,7 @@ Composed prayer: {{prayer_text}}
 | Front | Our Lady of Lourdes appearing to St. Bernadette |
 | Back | Sealed water capsule with authentic Lourdes water |
 | Includes | Certificate of Authenticity |
-| Price | $79 |
+| Price | $59 |
 | Shipping | Free — ships directly from France |
 | Delivery | 7-14 business days |
 
@@ -115,7 +115,7 @@ Composed prayer: {{prayer_text}}
 │  "Would you like me to send one to you — for {personName}?"                 │
 │                                                                             │
 │  ┌─────────────────────────────────────────────────────────────────────┐   │
-│  │              MEDAL OFFER CARD ($79)                                  │   │
+│  │              MEDAL OFFER CARD ($59)                                  │   │
 │  │  [Yes — Send Me the Medal]  [Tell me more]  [No thank you]           │   │
 │  └─────────────────────────────────────────────────────────────────────┘   │
 └─────────────────────────────────────────────────────────────────────────────┘
@@ -327,7 +327,7 @@ Composed prayer: {{prayer_text}}
 │   ✦ Certificate of Authenticity         │
 │   ✦ Free shipping from France           │
 │                                         │
-│             $79                         │
+│             $59                         │
 │                                         │
 │  [Yes — Send Me the Medal]              │
 │  [Tell me more]                         │
@@ -486,7 +486,7 @@ Composed prayer: {{prayer_text}}
 │  A blessed gift is on its way           │
 ├─────────────────────────────────────────┤
 │  [medal img]  Lourdes Healing Medal     │
-│               For: {personName} — $79   │
+│               For: {personName} — $59   │
 ├─────────────────────────────────────────┤
 │  WHAT HAPPENS NEXT                      │
 │  ✦ Medal being prepared in France       │
@@ -675,7 +675,7 @@ type UpsellUiHint =
 | Path | Base | Upsell | Total |
 |------|------|--------|-------|
 | Prayer only | $35 | — | $35 |
-| Prayer + Medal | $35 | $79 | $114 |
+| Prayer + Medal | $35 | $59 | $94 |
 | Prayer + Candle | $35 | $19 | $54 |
 
 ---

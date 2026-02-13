@@ -68,7 +68,7 @@ Everything about the post-payment medal upsell flow.
 - 10-phase message sequence (transition → the_ask → downsell)
 - All scripted messages with self/other variants
 - Image specifications (medal, bernadette, testimonials)
-- Offer cards (medal $79, candle $19)
+- Offer cards (medal $59, candle $19)
 - Thank you cards (3 variants)
 - Exit paths and user journey map
 

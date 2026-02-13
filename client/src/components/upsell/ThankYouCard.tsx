@@ -63,7 +63,7 @@ const VARIANT_CONTENT: Record<
     subtext: () => "A blessed gift is on its way",
     productLabel: "The Lourdes Healing Medal",
     productImage: "/images/medal-front.jpg",
-    price: "$79",
+    price: "$59",
     steps: [
       "Your medal is being prepared in France",
       "It will be blessed at the Grotto before shipping",

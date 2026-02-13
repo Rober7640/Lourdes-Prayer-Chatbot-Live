@@ -5,7 +5,7 @@
 
 ## Overview
 
-Post-purchase upsell page (`/confirmation/:sessionId`) that continues the chat with Messenger Marie after a successful prayer payment. The upsell offers a Lourdes Healing Medal ($79) with a candle downsell ($19) if declined.
+Post-purchase upsell page (`/confirmation/:sessionId`) that continues the chat with Messenger Marie after a successful prayer payment. The upsell offers a Lourdes Healing Medal ($59) with a candle downsell ($19) if declined.
 
 Based on: `docs/lourdes-upsell-1-medal-prompt.md`
 
@@ -18,7 +18,7 @@ Based on: `docs/lourdes-upsell-1-medal-prompt.md`
 | File | Purpose | Status |
 |------|---------|--------|
 | `client/src/pages/confirmation.tsx` | Main upsell page (mirrors chat.tsx structure) | Done |
-| `client/src/components/upsell/MedalOfferCard.tsx` | Medal offer card ($79) | Done |
+| `client/src/components/upsell/MedalOfferCard.tsx` | Medal offer card ($59) | Done |
 | `client/src/components/upsell/CandleOfferCard.tsx` | Candle downsell card ($19) | Done |
 | `client/src/components/upsell/ShippingForm.tsx` | Address collection form | Done |
 | `client/src/components/upsell/ContinueOrGoButtons.tsx` | [Yes, please] / [I need to go] buttons | Done |
@@ -56,7 +56,7 @@ Based on: `docs/lourdes-upsell-1-medal-prompt.md`
 | `POST /api/upsell/action` | Handle button clicks (continue, go, accept, decline, tell_me_more) | Done |
 | `POST /api/upsell/advance` | Auto-advance to next phase | Done |
 | `POST /api/upsell/message` | Handle free-form messages (rare) | Done |
-| `POST /api/upsell/medal` | Process medal purchase ($79) with shipping address | Stub |
+| `POST /api/upsell/medal` | Process medal purchase ($59) with shipping address | Stub |
 | `POST /api/upsell/candle` | Process candle purchase ($19) | Stub |
 
 ---
@@ -100,7 +100,7 @@ THE_ASK (3 msgs)
 "Would you like me to send one for [Name]?"
       |
       v
-[Show Medal Offer Card - $79]
+[Show Medal Offer Card - $59]
       |
       +--[Accept]--> SHIPPING_FORM --> COMPLETE
       |
@@ -194,7 +194,7 @@ Images appear after a specific message in each phase:
 ### TODO Items
 
 1. **Stripe Integration**
-   - Create actual Stripe checkout sessions for medal ($79) and candle ($19)
+   - Create actual Stripe checkout sessions for medal ($59) and candle ($19)
    - Handle webhook for payment completion
    - Redirect to Stripe checkout from shipping form
 
@@ -259,7 +259,7 @@ http://localhost:5000/confirmation/abc-123-def-456
 | Page loads | 4 transition messages appear with typing animation |
 | Click "Yes, please" | Messages auto-advance through all phases |
 | Watch images | Images appear after intro messages (medal, Bernadette, etc.) |
-| Medal offer appears | $79 card with 3 buttons |
+| Medal offer appears | $59 card with 3 buttons |
 | Click "Tell me more" | 8 more messages, then offer reappears |
 | Click "No thank you" | Candle downsell ($19) appears |
 | Click "Yes — Light a Candle" | Thank you message |

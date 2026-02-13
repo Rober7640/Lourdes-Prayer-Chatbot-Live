@@ -1196,14 +1196,14 @@ export default function ChatPage() {
                       <p className="text-sm text-muted-foreground mb-4">
                         This medal has been touched to the rock of the Grotto at Lourdes. A tangible connection to this holy place.
                       </p>
-                      <div className="text-lg font-semibold text-foreground mb-4">$79</div>
+                      <div className="text-lg font-semibold text-foreground mb-4">$59</div>
                       <div className="flex gap-3">
                         <button
                           onClick={() => handleUpsellSelect("medal")}
                           disabled={isProcessingPayment}
                           className="flex-1 rounded-lg bg-primary hover:bg-primary/90 text-primary-foreground py-2.5 px-4 text-sm font-medium transition disabled:opacity-50"
                         >
-                          {isProcessingPayment ? "Processing..." : "Yes, Add the Medal to My Order for $79"}
+                          {isProcessingPayment ? "Processing..." : "Yes, Add the Medal to My Order for $59"}
                         </button>
                         <button
                           onClick={() => handleUpsellDecline("medal")}

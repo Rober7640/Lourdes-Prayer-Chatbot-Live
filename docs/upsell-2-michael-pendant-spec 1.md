@@ -455,13 +455,13 @@ After the testimonial, add ONE message that connects Michael to THEIR situation:
 | Path | Base | Upsell 1 | Upsell 2 | Total |
 |------|------|----------|----------|-------|
 | Prayer only | $35 | — | — | $35 |
-| Prayer + Medal | $35 | $79 | — | $114 |
-| Prayer + Medal + Pendant | $35 | $79 | $49 | **$163** |
+| Prayer + Medal | $35 | $59 | — | $94 |
+| Prayer + Medal + Pendant | $35 | $59 | $49 | **$143** |
 | Prayer + Candle | $35 | $19 | — | $54 |
 | Prayer + Candle + Pendant | $35 | $19 | $49 | $103 |
 | Prayer + Pendant | $35 | — | $49 | $84 |
 
-**Max possible revenue per customer: $163** (prayer + medal + pendant)
+**Max possible revenue per customer: $143** (prayer + medal + pendant)
 
 ---
 

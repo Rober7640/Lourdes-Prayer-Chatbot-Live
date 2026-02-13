@@ -50,7 +50,7 @@ export default function MedalOfferCard({
         </div>
 
         <div className="text-2xl font-bold text-foreground mb-6">
-          $79
+          $59
         </div>
 
         <div className="space-y-3">

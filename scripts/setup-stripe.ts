@@ -5,7 +5,7 @@
  * 1. Prayer Delivery - Hardship ($28)
  * 2. Prayer Delivery - Full ($35)
  * 3. Prayer Delivery - Generous ($55)
- * 4. Blessed Miraculous Medal ($79)
+ * 4. Blessed Miraculous Medal ($59)
  * 5. Candle at the Grotto ($19)
  *
  * Run: npx tsx scripts/setup-stripe.ts
@@ -59,7 +59,7 @@ const products = [
   {
     name: "Blessed Miraculous Medal",
     description: "A blessed Miraculous Medal from the Grotto of Lourdes, shipped to your address.",
-    amount: 7900, // $79 in cents
+    amount: 5900, // $59 in cents
     envKey: "STRIPE_PRICE_ID_MEDAL",
   },
   {

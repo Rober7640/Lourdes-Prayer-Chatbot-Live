@@ -13,7 +13,7 @@ Post-purchase confirmation page that acknowledges the customer's purchase, sets 
 | Prayer Only (early exit) | Prayer petition | Declined at "I need to go" | `prayer` |
 | Prayer Only (full decline) | Prayer petition | Declined medal → Declined candle | `prayer` |
 | Prayer + Candle | Prayer + Candle ($19) | Declined medal → Accepted candle | `candle` |
-| Prayer + Medal | Prayer + Medal ($79) | Accepted medal | `medal` |
+| Prayer + Medal | Prayer + Medal ($59) | Accepted medal | `medal` |
 
 ---
 
@@ -178,7 +178,7 @@ interface ThankYouCardProps {
 - Image: Medal front thumbnail
 - Label: "The Lourdes Healing Medal"
 - Person: "For {personName}"
-- Price: "$79"
+- Price: "$59"
 - Includes: Certificate of Authenticity
 
 **What Happens Next:**

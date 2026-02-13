@@ -73,7 +73,7 @@ function getTierAmount(tier: PaymentTier): number {
 
 function getUpsellAmount(type: UpsellType): number {
   const amounts: Record<UpsellType, number> = {
-    medal: 7900,
+    medal: 5900,
     candle: 1900,
     pendant: 4900,
   };

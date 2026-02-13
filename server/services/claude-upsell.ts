@@ -618,7 +618,7 @@ CONTEXT:
 - Current phase: ${ctx.phase}
 - Offer shown: ${ctx.flags.offerShown}
 
-You are offering them a Lourdes Healing Medal ($79) — a 14k silver plated medal containing water from the spring at Lourdes.
+You are offering them a Lourdes Healing Medal ($59) — a 14k silver plated medal containing water from the spring at Lourdes.
 
 RULES:
 1. Be warm, pastoral, unhurried

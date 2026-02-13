@@ -85,7 +85,7 @@
   - $28 (partial)
   - $35 (full)
   - $55 (generous)
-  - $79 medal upsell
+  - $59 medal upsell
   - $19 candle upsell
 - [ ] `POST /api/payment/create-checkout` - Generate Stripe session
 - [ ] `POST /api/webhook/stripe` - Handle payment events
@@ -109,7 +109,7 @@
 #### 3.5.1 Upsell Page & Components
 - [x] Create `client/src/pages/confirmation.tsx` - Post-payment upsell page
 - [x] Chat continuation with Sister Marie (typing animation)
-- [x] `MedalOfferCard` component ($79)
+- [x] `MedalOfferCard` component ($59)
 - [x] `CandleOfferCard` component ($19 downsell)
 - [x] `ShippingForm` component (address collection)
 - [x] `ThankYouCard` component (3 variants: prayer, candle, medal)
@@ -140,7 +140,7 @@
 #### 3.5.4 Thank You Cards
 - [x] **Prayer variant** - Early exit or full decline
 - [x] **Candle variant** - Candle purchase ($19)
-- [x] **Medal variant** - Medal purchase ($79)
+- [x] **Medal variant** - Medal purchase ($59)
 - [x] "What Happens Next" steps
 - [x] Sister Marie blessing message
 - [x] Support email & Return to Home button
@@ -154,7 +154,7 @@
 | Accept medal → Complete shipping | Medal purchase | Medal |
 
 #### 3.5.6 Still TODO
-- [ ] Wire shipping form to Stripe checkout ($79)
+- [ ] Wire shipping form to Stripe checkout ($59)
 - [ ] Wire candle accept to Stripe checkout ($19)
 - [ ] Store orders in database
 - [ ] Trigger confirmation emails
@@ -209,7 +209,7 @@
 | List | Trigger | Emails |
 |------|---------|--------|
 | `customers-prayer-only` | Payment, no upsell | 4 emails |
-| `customers-medal` | Medal purchased ($79) | 5 emails |
+| `customers-medal` | Medal purchased ($59) | 5 emails |
 | `customers-candle` | Candle purchased ($19) | 4 emails |
 
 **Email Sequences:**

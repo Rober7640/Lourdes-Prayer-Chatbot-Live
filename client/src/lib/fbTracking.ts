@@ -22,7 +22,7 @@ export const TIER_AMOUNTS: Record<string, number> = {
 };
 
 export const UPSELL_AMOUNTS: Record<string, number> = {
-  medal: 79,
+  medal: 59,
   candle: 19,
 };
 
