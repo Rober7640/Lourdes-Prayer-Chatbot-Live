@@ -157,7 +157,7 @@ export async function createCheckoutSession(
       // Save payment method for one-click upsells
       payment_intent_data: {
         setup_future_usage: "off_session",
-        description: "Prayer petition to the Lourdes Grotto",
+        description: "Prayer petition to the Lourdes Grotto (CB)",
       },
     });
 
@@ -571,9 +571,9 @@ export async function chargeOneClickUpsell(
 
     // Get description based on upsell type
     const upsellDescriptions: Record<UpsellType, string> = {
-      medal: "Lourdes Medal",
-      candle: "Candle Lighting",
-      pendant: "Archangel Michael Pendant",
+      medal: "Lourdes Medal (CB)",
+      candle: "Candle Lighting (CB)",
+      pendant: "Archangel Michael Pendant (CB)",
     };
 
     // Create payment intent and charge immediately
