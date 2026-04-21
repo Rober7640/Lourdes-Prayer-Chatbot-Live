@@ -195,8 +195,8 @@ function ContextBlock() {
             <span data-testid="text-context-kicker">Lourdes, France</span>
           </div>
           <p className="mt-3 text-[15px] leading-relaxed text-foreground" data-testid="text-context-body">
-            Since 1858, millions have traveled to Lourdes seeking healing. 70 verified
-            miracles.
+            Since 1858, millions have traveled to Lourdes seeking healing. Over 7000
+            reported healings. 72 verified miracles.
           </p>
         </div>
       </div>
