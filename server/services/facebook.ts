@@ -52,7 +52,11 @@ export function extractFbRequestData(req: Request): {
     userAgent,
     fbc: req.body?.fbc || undefined,
     fbp: req.body?.fbp || undefined,
-    sourceUrl: req.body?.fbSourceUrl || undefined,
+    // Fall back to Referer header so CAPI events always include event_source_url
+    // (Meta blocks events without it for restricted-category domains).
+    sourceUrl: req.body?.fbSourceUrl
+      || (req.headers.referer as string | undefined)
+      || undefined,
   };
 }
 
