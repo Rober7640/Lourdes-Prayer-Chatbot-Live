@@ -15,6 +15,7 @@ import {
 } from "@/lib/typing";
 import {
   trackPurchase,
+  trackUpsell,
   TIER_AMOUNTS,
 } from "@/lib/fbTracking";
 
@@ -447,6 +448,11 @@ export default function ConfirmationPage() {
 
         // Charge succeeded — store paymentIntentId
         paymentIntentIdRef.current = chargeData.paymentIntentId || null;
+
+        // Fire browser Upsell pixel for medal (deduped with server CAPI via paymentIntentId)
+        if (chargeData.paymentIntentId) {
+          trackUpsell(chargeData.paymentIntentId, 59, "upsell_medal");
+        }
 
         // 2. Now get acceptance messages from the action endpoint
         const actionRes = await fetch("/api/upsell/action", {

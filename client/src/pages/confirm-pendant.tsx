@@ -13,6 +13,7 @@ import {
   calculatePauseBetweenMessages,
   calculateThinkingDelay,
 } from "@/lib/typing";
+import { trackUpsell } from "@/lib/fbTracking";
 
 // Import upsell components
 import UpsellImage from "@/components/upsell/UpsellImage";
@@ -444,6 +445,11 @@ export default function ConfirmPendantPage() {
 
         // Charge succeeded — store paymentIntentId
         paymentIntentIdRef.current = chargeData.paymentIntentId || null;
+
+        // Fire browser Upsell pixel for pendant (deduped with server CAPI via paymentIntentId)
+        if (chargeData.paymentIntentId) {
+          trackUpsell(chargeData.paymentIntentId, 49, "upsell_pendant");
+        }
 
         // If shipping already collected (from medal), redirect to thank-you
         if (chargeData.shippingAlreadyCollected) {

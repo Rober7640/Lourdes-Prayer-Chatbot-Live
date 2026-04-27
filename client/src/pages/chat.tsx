@@ -15,7 +15,6 @@ import {
 } from "@/lib/typing";
 import {
   generateFbEventId,
-  trackLead,
   trackInitiateCheckout,
   trackPurchase,
   trackUpsell,
@@ -528,13 +527,10 @@ export default function ChatPage() {
     try {
       setShowThinkingDots(true);
 
-      // Generate Lead event ID for deduplication
-      const leadEventId = generateFbEventId();
-
       const res = await fetch("/api/chat/email", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ sessionId, email, ...getFbFields(leadEventId) }),
+        body: JSON.stringify({ sessionId, email, ...getFbFields() }),
       });
 
       if (!res.ok) {
@@ -543,8 +539,6 @@ export default function ChatPage() {
 
       const data = await res.json();
 
-      // Fire Lead event after email is successfully submitted (user added to AWeber/Sheets)
-      trackLead(leadEventId);
       setShowThinkingDots(false);
       setEmailInput("");
 
