@@ -24,6 +24,7 @@ export const TIER_AMOUNTS: Record<string, number> = {
 export const UPSELL_AMOUNTS: Record<string, number> = {
   medal: 59,
   candle: 19,
+  pendant: 49,
 };
 
 // ============================================================================
@@ -112,6 +113,24 @@ export function trackPurchase(
   fbq(
     "track",
     "Purchase",
+    {
+      value,
+      currency: "USD",
+      content_type: "product",
+      content_ids: [contentId],
+    },
+    { eventID: eventId }
+  );
+}
+
+export function trackUpsell(
+  eventId: string,
+  value: number,
+  contentId: string
+): void {
+  fbq(
+    "trackCustom",
+    "Upsell",
     {
       value,
       currency: "USD",

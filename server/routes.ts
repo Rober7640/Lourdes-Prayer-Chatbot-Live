@@ -1160,17 +1160,17 @@ export async function registerRoutes(
             }).catch((err) => console.error("AWeber medal list/shipping update failed:", err));
           }
 
-          // Facebook CAPI Purchase event
+          // Facebook CAPI Upsell event
           if (isFacebookEnabled() && result.paymentIntentId) {
             const fbData = extractFbRequestData(req);
             sendEvent({
-              eventName: "Purchase",
+              eventName: "Upsell",
               eventId: result.paymentIntentId,
               email: originalSession.userEmail || undefined,
               userName: originalSession.userName || undefined,
               ...fbData,
               customData: { value: 59, currency: "USD", content_type: "product", content_ids: ["upsell_medal"] },
-            }).catch((err) => console.error("Facebook CAPI Purchase (medal) failed:", err));
+            }).catch((err) => console.error("Facebook CAPI Upsell (medal) failed:", err));
           }
 
           // Set purchase type and phase
@@ -1270,17 +1270,17 @@ export async function registerRoutes(
             }).catch((err) => console.error("AWeber medal list add at charge failed:", err));
           }
 
-          // Facebook CAPI Purchase event
+          // Facebook CAPI Upsell event
           if (isFacebookEnabled() && result.paymentIntentId) {
             const fbData = extractFbRequestData(req);
             sendEvent({
-              eventName: "Purchase",
+              eventName: "Upsell",
               eventId: result.paymentIntentId,
               email: originalSession.userEmail || undefined,
               userName: originalSession.userName || undefined,
               ...fbData,
               customData: { value: 59, currency: "USD", content_type: "product", content_ids: ["upsell_medal"] },
-            }).catch((err) => console.error("Facebook CAPI Purchase (medal-charge) failed:", err));
+            }).catch((err) => console.error("Facebook CAPI Upsell (medal-charge) failed:", err));
           }
 
           // Set purchase type and phase
@@ -1488,17 +1488,17 @@ export async function registerRoutes(
             }
           }
 
-          // Facebook CAPI Purchase event
+          // Facebook CAPI Upsell event
           if (isFacebookEnabled() && result.paymentIntentId) {
             const fbData = extractFbRequestData(req);
             sendEvent({
-              eventName: "Purchase",
+              eventName: "Upsell",
               eventId: result.paymentIntentId,
               email: originalSession.userEmail || undefined,
               userName: originalSession.userName || undefined,
               ...fbData,
               customData: { value: 49, currency: "USD", content_type: "product", content_ids: ["upsell_pendant"] },
-            }).catch((err) => console.error("Facebook CAPI Purchase (pendant-charge) failed:", err));
+            }).catch((err) => console.error("Facebook CAPI Upsell (pendant-charge) failed:", err));
           }
 
           // Set purchase type and phase
@@ -1788,17 +1788,17 @@ export async function registerRoutes(
               .catch((err) => console.error("Google Sheets candle update failed:", err));
           }
 
-          // Facebook CAPI Purchase event
+          // Facebook CAPI Upsell event
           if (isFacebookEnabled() && result.paymentIntentId) {
             const fbData = extractFbRequestData(req);
             sendEvent({
-              eventName: "Purchase",
+              eventName: "Upsell",
               eventId: result.paymentIntentId,
               email: originalSession.userEmail || undefined,
               userName: originalSession.userName || undefined,
               ...fbData,
               customData: { value: 19, currency: "USD", content_type: "product", content_ids: ["upsell_candle"] },
-            }).catch((err) => console.error("Facebook CAPI Purchase (candle) failed:", err));
+            }).catch((err) => console.error("Facebook CAPI Upsell (candle) failed:", err));
           }
 
           // Set purchase type and phase
@@ -2095,17 +2095,17 @@ export async function registerRoutes(
             }).catch((err) => console.error("AWeber pendant upsell list add failed:", err));
           }
 
-          // Facebook CAPI Purchase event
+          // Facebook CAPI Upsell event
           if (isFacebookEnabled() && result.paymentIntentId) {
             const fbData = extractFbRequestData(req);
             sendEvent({
-              eventName: "Purchase",
+              eventName: "Upsell",
               eventId: result.paymentIntentId,
               email: originalSession.userEmail || undefined,
               userName: originalSession.userName || undefined,
               ...fbData,
               customData: { value: 49, currency: "USD", content_type: "product", content_ids: ["upsell_pendant"] },
-            }).catch((err) => console.error("Facebook CAPI Purchase (pendant) failed:", err));
+            }).catch((err) => console.error("Facebook CAPI Upsell (pendant) failed:", err));
           }
 
           // Set purchase type and phase
@@ -2391,18 +2391,18 @@ export async function registerRoutes(
             .catch((err) => console.error("Google Sheets candle update failed:", err));
         }
 
-        // Facebook CAPI Purchase event for one-click upsell
+        // Facebook CAPI Upsell event for one-click upsell
         if (isFacebookEnabled() && result.paymentIntentId) {
           const fbData = extractFbRequestData(req);
           const upsellAmounts: Record<string, number> = { medal: 59, candle: 19, pendant: 49 };
           sendEvent({
-            eventName: "Purchase",
+            eventName: "Upsell",
             eventId: result.paymentIntentId,
             email: session.userEmail || undefined,
             userName: session.userName || undefined,
             ...fbData,
             customData: { value: upsellAmounts[upsellType] || 0, currency: "USD", content_type: "product", content_ids: [`upsell_${upsellType}`] },
-          }).catch((err) => console.error(`Facebook CAPI Purchase (${upsellType}) failed:`, err));
+          }).catch((err) => console.error(`Facebook CAPI Upsell (${upsellType}) failed:`, err));
         }
 
         return res.json({
@@ -2925,7 +2925,7 @@ export async function registerRoutes(
 
       }
 
-      // Facebook CAPI Purchase event from webhook (no browser context)
+      // Facebook CAPI Purchase/Upsell event from webhook (no browser context)
       if (isFacebookEnabled() && result.paymentIntentId) {
         const fbPurchaseType = result.type === "medal" ? "medal" :
                                result.type === "candle" ? "candle" :
@@ -2936,14 +2936,15 @@ export async function registerRoutes(
           const tierAmounts: Record<string, number> = { hardship: 28, full: 35, generous: 55 };
           fbAmount = tierAmounts[result.tier] || 35;
         }
+        const fbEventName = fbPurchaseType === "prayer" ? "Purchase" : "Upsell";
         sendEvent({
-          eventName: "Purchase",
+          eventName: fbEventName,
           eventId: result.paymentIntentId,
           email: session?.userEmail || undefined,
           userName: session?.userName || undefined,
           sourceUrl: session?.fbSourceUrl || undefined,
           customData: { value: fbAmount, currency: "USD", content_type: "product", content_ids: [fbPurchaseType === "prayer" ? "prayer_petition" : `upsell_${fbPurchaseType}`] },
-        }).catch((err) => console.error("Facebook CAPI Purchase (webhook) failed:", err));
+        }).catch((err) => console.error(`Facebook CAPI ${fbEventName} (webhook) failed:`, err));
       }
     }
 

@@ -18,6 +18,7 @@ import {
   trackLead,
   trackInitiateCheckout,
   trackPurchase,
+  trackUpsell,
   getFbFields,
   TIER_AMOUNTS,
   UPSELL_AMOUNTS,
@@ -710,9 +711,9 @@ export default function ChatPage() {
         // One-click successful!
         setIsProcessingPayment(false);
 
-        // Fire Purchase pixel for one-click upsell
+        // Fire custom Upsell pixel for one-click upsell
         if (data.paymentIntentId) {
-          trackPurchase(data.paymentIntentId, UPSELL_AMOUNTS[upsellType] || 0, `upsell_${upsellType}`);
+          trackUpsell(data.paymentIntentId, UPSELL_AMOUNTS[upsellType] || 0, `upsell_${upsellType}`);
         }
 
         // Store the paymentIntentId for shipping update
