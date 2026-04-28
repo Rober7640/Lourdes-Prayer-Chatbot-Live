@@ -219,10 +219,10 @@ export default function ThankYouCard({
             Need Help?
           </p>
           <a
-            href="mailto:support@messengersoflourdes.com"
+            href="mailto:support@lourdes-shrine.org"
             className="text-sm text-primary hover:underline"
           >
-            support@messengersoflourdes.com
+            support@lourdes-shrine.org
           </a>
         </div>
         <Button
