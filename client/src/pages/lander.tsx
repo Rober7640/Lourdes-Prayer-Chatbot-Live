@@ -317,11 +317,11 @@ function Footer() {
         Messengers of Lourdes is independent. Not affiliated with the Sanctuary.
       </div>
       <div className="mt-3 flex items-center justify-center gap-4 text-xs text-muted-foreground">
-        <a href="#" className="hover:underline" data-testid="link-privacy">
+        <a href="https://lourdes-shrine.org/privacy-policy" className="hover:underline" data-testid="link-privacy">
           Privacy
         </a>
         <span aria-hidden="true">·</span>
-        <a href="#" className="hover:underline" data-testid="link-terms">
+        <a href="https://lourdes-shrine.org/terms-of-use" className="hover:underline" data-testid="link-terms">
           Terms
         </a>
       </div>
